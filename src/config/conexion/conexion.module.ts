@@ -3,6 +3,7 @@ import { Collaborator } from 'src/entities/collaborator/collaborator';
 import { Document } from 'src/entities/document/document';
 import { Project } from 'src/entities/project/project';
 import { Snapshot } from 'src/entities/snapshot/snapshot';
+import { Template } from 'src/entities/template/template';
 import { DataSource } from 'typeorm';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 
@@ -26,7 +27,7 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
             synchronize: true,
             logging: true,
             namingStrategy: new SnakeNamingStrategy(),
-            entities: [Project, Document, Collaborator, Snapshot],
+            entities: [Project, Document, Collaborator, Snapshot, Template],
           });
 
           await poolConection.initialize();

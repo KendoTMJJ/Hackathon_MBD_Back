@@ -1,21 +1,28 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn, VersionColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+  VersionColumn,
+} from 'typeorm';
 
 @Entity('Template', { schema: 'public' })
 export class Template {
-  @ApiProperty({ description: 'ID del documento', example: 'uuid' })
-  @PrimaryGeneratedColumn('uuid', { name: 'cod_document' })
+  @ApiProperty({ description: 'ID de la plantilla', example: 'uuid' })
+  @PrimaryGeneratedColumn('uuid', { name: 'cod_template' })
   id: string;
 
   @ApiProperty({ description: 'Título', example: 'Diagrama CRM' })
-  @Column({ name: 'title_document', type: 'varchar' })
+  @Column({ name: 'title_template', type: 'varchar' })
   title: string;
 
   @ApiProperty({
     description: 'JSON React Flow',
     example: { nodes: [], edges: [] },
   })
-  @Column({ name: 'data_document', type: 'jsonb', default: () => `'{}'` })
+  @Column({ name: 'data_template', type: 'jsonb', default: () => `'{}'` })
   data: Record<string, any>;
 
   @ApiProperty({ description: 'Versión (lock optimista)', example: 1 })
@@ -37,6 +44,6 @@ export class Template {
   updatedAt: Date;
 
   @ApiProperty({ description: 'Tipo', example: 'diagram' })
-  @Column({ name: 'kind_document', type: 'varchar', default: 'diagram' })
+  @Column({ name: 'kind_template', type: 'varchar', default: 'diagram' })
   kind: string;
 }
