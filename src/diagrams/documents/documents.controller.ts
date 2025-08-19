@@ -51,4 +51,5 @@ export class DocumentsController {
   @Get(':id/collaborators') collabs(@Param('id') id: string, @Req() req: any) {
     return this.svc.listCollaborators(id, req.user.sub);
   }
+
 }

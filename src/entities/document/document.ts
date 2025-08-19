@@ -14,6 +14,8 @@ import {
 import { Project } from '../project/project';
 import { Collaborator } from '../collaborator/collaborator';
 import { Snapshot } from '../snapshot/snapshot';
+import { SharedLink } from '../shared-link/shared-link';
+import { Sheet } from 'src/entities/sheet/sheet';
 
 @Entity('Document', { schema: 'public' })
 export class Document {
@@ -78,4 +80,10 @@ export class Document {
 
   @OneToMany(() => Snapshot, (s: Snapshot) => s.document)
   snapshots: Snapshot[];
+
+  @OneToMany(() => SharedLink, (sl: SharedLink) => sl.document)
+  sharedLinks: SharedLink[];
+
+  @OneToMany(() => Sheet, (s: Sheet) => s.document)
+  sheets: Sheet[];
 }
