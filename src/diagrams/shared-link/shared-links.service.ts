@@ -1,4 +1,3 @@
-// src/modules/shared-links/shared-links.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -27,19 +26,15 @@ export class SharedLinksService {
     dto: CreateShareLinkDto,
     userSub: string,
   ): Promise<{ shareUrl: string; link: SharedLink }> {
-    // Verificar permisos
     await this.canShare(documentId, userSub);
 
-    // Generar token único
     const token = crypto.randomBytes(32).toString('hex');
-    
-    // Hash de contraseña si existe
-let passwordHash: string | null = null;
+
+    let passwordHash: string | null = null;
     if (dto.password) {
       passwordHash = await bcrypt.hash(dto.password, 10);
     }
 
-    // Crear shared link
     const link = await this.sharedLinks.save(
       this.sharedLinks.create({
         token,
@@ -51,7 +46,6 @@ let passwordHash: string | null = null;
       }),
     );
 
-    // Generar URL completa
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const shareUrl = `${baseUrl}/shared/${token}`;
 
@@ -60,7 +54,7 @@ let passwordHash: string | null = null;
 
   async listByDocument(documentId: string, userSub: string): Promise<SharedLink[]> {
     await this.canShare(documentId, userSub);
-    
+
     return this.sharedLinks.find({
       where: { documentId, isActive: true },
       order: { createdAt: 'DESC' },
@@ -73,19 +67,16 @@ let passwordHash: string | null = null;
   ): Promise<{ document: Document; permission: 'read' | 'edit' }> {
     const link = await this.sharedLinks.findOne({
       where: { token, isActive: true },
-      relations: ['document', 'document.project'],
+      relations: ['document', 'document.project', 'document.sheets'],
     });
 
-    if (!link) {
-      throw new NotFoundException('Shared link not found');
-    }
+    if (!link) throw new NotFoundException('Shared link not found');
+    
 
-    // Verificar expiración
     if (link.expiresAt && new Date() > link.expiresAt) {
       throw new ForbiddenException('Shared link has expired');
     }
 
-    // Verificar contraseña si existe
     if (link.passwordHash) {
       if (!password) {
         throw new BadRequestException('Password required');
@@ -96,10 +87,7 @@ let passwordHash: string | null = null;
       }
     }
 
-    return {
-      document: link.document,
-      permission: link.permission,
-    };
+    return { document: link.document, permission: link.permission };
   }
 
   async revoke(linkId: string, userSub: string): Promise<void> {
@@ -108,12 +96,10 @@ let passwordHash: string | null = null;
       relations: ['document'],
     });
 
-    if (!link) {
-      throw new NotFoundException('Shared link not found');
-    }
+    if (!link) throw new NotFoundException('Shared link not found');
 
     await this.canShare(link.documentId, userSub);
-    
+
     await this.sharedLinks.update(linkId, { isActive: false });
   }
 
@@ -125,7 +111,7 @@ let passwordHash: string | null = null;
       .where('d.id = :documentId', { documentId })
       .andWhere(
         '(d.created_by = :userSub OR p.owner_sub = :userSub OR (c.user_sub = :userSub AND c.role IN (:...roles)))',
-        { userSub, roles: ['owner', 'editor'] }
+        { userSub, roles: ['owner', 'editor'] },
       )
       .getOne();
 

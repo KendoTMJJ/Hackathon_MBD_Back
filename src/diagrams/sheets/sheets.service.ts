@@ -44,7 +44,7 @@ export class SheetsService {
         name: dto.name,
         data: dto.data ?? { nodes: [], edges: [] },
         orderIndex: nextOrder,
-        documentId,
+        document: { id: documentId } as Document,
       }),
     );
   }
@@ -61,7 +61,7 @@ export class SheetsService {
   async get(sheetId: string, userSub: string): Promise<Sheet> {
     const sheet = await this.sheets.findOne({
       where: { id: sheetId },
-      relations: ['document'],
+      relations: ['document', 'document.project', 'document.sheets'],
     });
 
     if (!sheet) {
@@ -79,7 +79,7 @@ export class SheetsService {
   ): Promise<Sheet> {
     const sheet = await this.sheets.findOne({
       where: { id: sheetId },
-      relations: ['document'],
+      relations: ['document', 'document.project', 'document.sheets'],
     });
 
     if (!sheet) {
@@ -99,7 +99,7 @@ export class SheetsService {
   async delete(sheetId: string, userSub: string): Promise<void> {
     const sheet = await this.sheets.findOne({
       where: { id: sheetId },
-      relations: ['document'],
+      relations: ['document', 'document.project', 'document.sheets'],
     });
 
     if (!sheet) {

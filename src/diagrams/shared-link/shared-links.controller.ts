@@ -19,7 +19,6 @@ import { CreateShareLinkDto } from './dto/create-shared-link.dto';
 export class SharedLinksController {
   constructor(private readonly sharedLinksService: SharedLinksService) {}
 
-  // Crear shared link (requiere autenticación)
   @Post('documents/:id/share')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Crear link compartido' })
@@ -32,7 +31,6 @@ export class SharedLinksController {
     return this.sharedLinksService.create(documentId, dto, req.user.sub);
   }
 
-  // Listar shared links de un documento
   @Get('documents/:id/shares')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Listar links compartidos' })
@@ -41,18 +39,6 @@ export class SharedLinksController {
     return this.sharedLinksService.listByDocument(documentId, req.user.sub);
   }
 
-  // Acceder a documento compartido (NO requiere autenticación)
-  @Get('shared/:token')
-  @ApiOperation({ summary: 'Acceder a documento compartido' })
-  @ApiResponse({ status: 200, description: 'Documento compartido' })
-  async getSharedDocument(
-    @Param('token') token: string,
-    @Query('password') password?: string,
-  ) {
-    return this.sharedLinksService.getByToken(token, password);
-  }
-
-  // Revocar shared link
   @Delete('documents/shares/:id')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Revocar link compartido' })
