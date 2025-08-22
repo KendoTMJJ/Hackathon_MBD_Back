@@ -6,6 +6,7 @@ import { Project } from 'src/entities/project/project';
 import { SharedLink } from 'src/entities/shared-link/shared-link';
 import { Sheet } from 'src/entities/sheet/sheet';
 import { Snapshot } from 'src/entities/snapshot/snapshot';
+import { Tecnologie } from 'src/entities/tecnologie/tecnologie';
 import { Template } from 'src/entities/template/template';
 import { DataSource } from 'typeorm';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
@@ -30,7 +31,16 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
             synchronize: true,
             logging: true,
             namingStrategy: new SnakeNamingStrategy(),
-            entities: [Project, Document, Collaborator, Snapshot, Template, SharedLink, Sheet],
+            entities: [
+              Project,
+              Document,
+              Collaborator,
+              Snapshot,
+              Template,
+              SharedLink,
+              Sheet,
+              Tecnologie,
+            ],
           });
 
           await poolConection.initialize();

@@ -11,10 +11,32 @@ import { SharedLinksModule } from './shared-link/shared-links.module';
 import { SheetsService } from './sheets/sheets.service';
 import { SheetsController } from './sheets/sheets.controller';
 import { SheetsModule } from './sheets/sheets.module';
+import { TecnologiesService } from './tecnologies/tecnologies.service';
+import { TecnologiesController } from './tecnologies/tecnologies.controller';
+import { TecnologiesModule } from './tecnologies/tecnologies.module';
 
 @Module({
-  imports: [ProjectsModule, DocumentsModule, CollabModule, TemplatesModule, SharedLinksModule, SheetsModule],
-  providers: [ProjectsService, DocumentsService, SheetsService, SheetsService],
-  controllers: [ProjectsController, DocumentsController, SheetsController],
+  imports: [
+    ProjectsModule,
+    DocumentsModule,
+    CollabModule,
+    TemplatesModule,
+    SharedLinksModule,
+    SheetsModule,
+    TecnologiesModule,
+  ],
+  providers: [
+    ProjectsService,
+    DocumentsService,
+    SheetsService,
+    SheetsService,
+    TecnologiesService,
+  ],
+  controllers: [
+    ProjectsController,
+    DocumentsController,
+    SheetsController,
+    TecnologiesController,
+  ],
 })
 export class DiagramsModule {}
