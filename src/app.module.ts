@@ -12,7 +12,7 @@ import { TecnologiesModule } from './diagrams/tecnologies/tecnologies.module';
     DiagramsModule,
     AuthModule,
     ConexionModule,
-    TecnologiesModule,
+    TecnologiesModule
   ],
   controllers: [],
   providers: [],
