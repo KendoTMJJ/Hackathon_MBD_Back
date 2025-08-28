@@ -29,8 +29,14 @@ export class SheetsService {
     userSub: string,
   ): Promise<Sheet> {
     await this.canEdit(documentId, userSub);
+    const document = await this.documents.findOne({
+      where: { id: documentId },
+    });
 
-    // Obtener el siguiente orderIndex
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
     const maxOrder = await this.sheets
       .createQueryBuilder('s')
       .select('MAX(s.order_index)', 'maxOrder')
@@ -39,23 +45,25 @@ export class SheetsService {
 
     const nextOrder = (maxOrder?.maxOrder ?? -1) + 1;
 
-    return this.sheets.save(
-      this.sheets.create({
-        name: dto.name,
-        data: dto.data ?? { nodes: [], edges: [] },
-        orderIndex: nextOrder,
-        document: { id: documentId } as Document,
-      }),
-    );
+    const newSheet = this.sheets.create({
+      name: dto.name,
+      data: dto.data ?? { nodes: [], edges: [] },
+      orderIndex: nextOrder,
+      documentId: documentId, 
+    });
+
+    return this.sheets.save(newSheet);
   }
 
   async listByDocument(documentId: string, userSub: string): Promise<Sheet[]> {
     await this.canRead(documentId, userSub);
 
-    return this.sheets.find({
+    const activeSheets = await this.sheets.find({
       where: { documentId, isActive: true },
       order: { orderIndex: 'ASC' },
     });
+
+    return activeSheets;
   }
 
   async get(sheetId: string, userSub: string): Promise<Sheet> {
@@ -88,7 +96,6 @@ export class SheetsService {
 
     await this.canEdit(sheet.documentId, userSub);
 
-    // Actualizar campos
     if (dto.name !== undefined) sheet.name = dto.name;
     if (dto.data !== undefined) sheet.data = dto.data;
     if (dto.orderIndex !== undefined) sheet.orderIndex = dto.orderIndex;
@@ -108,7 +115,6 @@ export class SheetsService {
 
     await this.canEdit(sheet.documentId, userSub);
 
-    // Verificar que no sea la única hoja
     const sheetsCount = await this.sheets.count({
       where: { documentId: sheet.documentId, isActive: true },
     });
@@ -117,8 +123,7 @@ export class SheetsService {
       throw new BadRequestException('Cannot delete the last sheet');
     }
 
-    // Soft delete
-    await this.sheets.update(sheetId, { isActive: false });
+    await this.sheets.update({ id: sheetId }, { isActive: false });
   }
 
   async reorder(
@@ -128,14 +133,13 @@ export class SheetsService {
   ): Promise<void> {
     await this.canEdit(documentId, userSub);
 
-    // Actualizar orden en transacción
     await this.ds.transaction(async (manager) => {
       const sheetRepo = manager.getRepository(Sheet);
-      
+
       for (let i = 0; i < sheetIds.length; i++) {
         await sheetRepo.update(
           { id: sheetIds[i], documentId },
-          { orderIndex: i }
+          { orderIndex: i },
         );
       }
     });
@@ -150,7 +154,7 @@ export class SheetsService {
       .where('d.id = :documentId', { documentId })
       .andWhere(
         '(d.created_by = :userSub OR p.owner_sub = :userSub OR (c.user_sub = :userSub AND c.role IN (:...roles)))',
-        { userSub, roles: ['owner', 'editor', 'viewer'] }
+        { userSub, roles: ['owner', 'editor', 'viewer'] },
       )
       .getOne();
 
@@ -167,12 +171,164 @@ export class SheetsService {
       .where('d.id = :documentId', { documentId })
       .andWhere(
         '(d.created_by = :userSub OR p.owner_sub = :userSub OR (c.user_sub = :userSub AND c.role IN (:...roles)))',
-        { userSub, roles: ['owner', 'editor'] }
+        { userSub, roles: ['owner', 'editor'] },
       )
       .getOne();
 
     if (!document) {
       throw new ForbiddenException('No permission to edit this document');
     }
+  }
+
+  async updateViaSharedLink(
+    sheetId: string,
+    updateData: any,
+    documentId: string,
+  ): Promise<Sheet> {
+    const sheet = await this.sheets.findOne({
+      where: { id: sheetId, documentId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.sheets.update(sheetId, updateData);
+
+    const updatedSheet = await this.sheets.findOne({
+      where: { id: sheetId },
+    });
+
+    if (!updatedSheet) {
+      throw new NotFoundException('Sheet not found after update');
+    }
+
+    return updatedSheet;
+  }
+
+  async createViaSharedLink(
+    documentId: string,
+    dto: CreateSheetDto,
+    sharedLink: any,
+  ): Promise<Sheet> {
+    const actualDocumentId = sharedLink.documentId || sharedLink.document?.id;
+
+    if (!actualDocumentId) {
+      throw new BadRequestException('Document ID not found in shared link');
+    }
+
+    const finalDocumentId = actualDocumentId;
+
+    if (documentId && finalDocumentId !== documentId) {
+      throw new ForbiddenException('Shared link does not match document');
+    }
+
+    const document = await this.documents.findOne({
+      where: { id: finalDocumentId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    const maxOrder = await this.sheets
+      .createQueryBuilder('s')
+      .select('MAX(s.order_index)', 'maxOrder')
+      .where('s.document_id = :documentId', { documentId: finalDocumentId })
+      .getRawOne();
+
+    const nextOrder = (maxOrder?.maxOrder ?? -1) + 1;
+
+    const newSheet = this.sheets.create({
+      name: dto.name,
+      data: dto.data ?? { nodes: [], edges: [] },
+      orderIndex: nextOrder,
+      documentId: finalDocumentId, 
+    });
+
+    try {
+      const savedSheet = await this.sheets.save(newSheet);
+      return savedSheet;
+    } catch (error) {
+      throw new BadRequestException(`Error creating sheet: ${error.message}`);
+    }
+  }
+
+  async deleteViaSharedLink(sheetId: string, sharedLink: any): Promise<void> {
+    const sheet = await this.sheets.findOne({
+      where: { id: sheetId }, 
+      relations: ['document'],
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    if (!sheet.isActive) {
+      return;
+    }
+
+    const actualDocumentId = sharedLink.documentId || sharedLink.document?.id;
+
+    if (!actualDocumentId) {
+      throw new BadRequestException('Document ID not found in shared link');
+    }
+
+    if (actualDocumentId !== sheet.documentId) {
+      throw new ForbiddenException('Shared link does not match sheet document');
+    }
+
+    if (sharedLink.permission !== 'edit') {
+      throw new ForbiddenException('Shared link does not have edit permission');
+    }
+
+    const activeSheetCount = await this.sheets.count({
+      where: { documentId: sheet.documentId, isActive: true },
+    });
+
+    if (activeSheetCount <= 1) {
+      throw new BadRequestException('Cannot delete the last active sheet');
+    }
+
+    try {
+      await this.ds.transaction(async (manager) => {
+        const sheetRepo = manager.getRepository(Sheet);
+
+        const updateResult = await sheetRepo.update(sheetId, {
+          isActive: false,
+          updatedAt: new Date(),
+        });
+
+        if (updateResult.affected === 0) {
+          throw new BadRequestException('Failed to delete sheet');
+        }
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async listByDocumentViaSharedLink(
+    documentId: string,
+    sharedLink: any,
+  ): Promise<Sheet[]> {
+    const actualDocumentId = sharedLink.documentId || sharedLink.document?.id;
+
+    if (!actualDocumentId) {
+      throw new BadRequestException('Document ID not found in shared link');
+    }
+
+    if (actualDocumentId !== documentId) {
+      throw new ForbiddenException('Shared link does not match document');
+    }
+
+    const activeSheetsQueryBuilder = await this.sheets
+      .createQueryBuilder('sheet')
+      .where('sheet.documentId = :documentId', { documentId: actualDocumentId })
+      .andWhere('sheet.isActive = :isActive', { isActive: true })
+      .orderBy('sheet.orderIndex', 'ASC')
+      .getMany();
+
+    return activeSheetsQueryBuilder;
   }
 }

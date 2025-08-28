@@ -8,6 +8,7 @@ import {
   Body,
   Req,
   UseGuards,
+  Put,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -87,5 +88,18 @@ export class SheetsReorderController {
     @Req() req: any,
   ) {
     return this.sheetsService.reorder(documentId, sheetIds, req.user.sub);
+  }
+
+  @Put(':documentId/sheets/:sheetId')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: 'Actualizar hoja específica' })
+  @ApiResponse({ status: 200, description: 'Hoja actualizada exitosamente' })
+  async updateSheetInDocument(
+    @Param('documentId') documentId: string,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: UpdateSheetDto,
+    @Req() req: any,
+  ) {
+    return this.sheetsService.update(sheetId, dto, req.user.sub);
   }
 }

@@ -119,4 +119,8 @@ export class SharedLinksService {
       throw new ForbiddenException('No permission to share this document');
     }
   }
+
+async findById(id: string) {
+  return await this.sharedLinks.findOne({ where: { id } });
+}
 }
