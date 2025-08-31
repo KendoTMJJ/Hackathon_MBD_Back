@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -52,4 +53,8 @@ export class DocumentsController {
     return this.svc.listCollaborators(id, req.user.sub);
   }
 
+  @Delete(':id')
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.svc.remove(id, req.user.sub);
+  }
 }

@@ -148,6 +148,48 @@ export class DocumentsService {
     return this.cols.find({ where: { documentId: id } });
   }
 
+  async remove(id: string, userSub: string): Promise<void> {
+    await this.canDelete(id, userSub);
+
+    // Si no hay cascadas en FK, borramos explícitamente
+    await this.ds.transaction(async (m) => {
+      const dRepo = m.getRepository(Document);
+      const cRepo = m.getRepository(Collaborator);
+      const sRepo = m.getRepository(Snapshot);
+
+      // Verifica existencia (opcional, pero útil para 404)
+      const exists = await dRepo.findOne({ where: { id } });
+      if (!exists) throw new NotFoundException('Document not found');
+
+      await sRepo.delete({ documentId: id });
+      await cRepo.delete({ documentId: id });
+      await dRepo.delete({ id });
+    });
+  }
+
+  // --- permisos ---
+
+  private async canDelete(id: string, userSub: string): Promise<void> {
+    // Requiere ser owner del proyecto o owner del documento
+    const ok = await this.docs
+      .createQueryBuilder('d')
+      .leftJoin(Project, 'p', 'p.cod_project = d.project_id')
+      .leftJoin(
+        Collaborator,
+        'c',
+        'c.document_id = d.cod_document AND c.user_sub = :userSub',
+        { userSub },
+      )
+      .where('d.cod_document = :id', { id })
+      .andWhere(
+        "(p.owner_sub = :userSub OR (c.cod_collaborator IS NOT NULL AND c.role_collab = 'owner'))",
+        { userSub },
+      )
+      .getOne();
+
+    if (!ok) throw new ForbiddenException();
+  }
+
   // ---------- permisos ----------
   private async canRead(id: string, userSub: string): Promise<void> {
     const ok = await this.docs
