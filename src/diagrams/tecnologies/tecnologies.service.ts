@@ -1,3 +1,4 @@
+// tecnologies.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,7 +8,8 @@ import { UpdateTecnologieDto } from './dto/update-tecnologie.dto';
 
 @Injectable()
 export class TecnologiesService {
-  constructor(@InjectRepository(Tecnologie) private readonly repo: Repository<Tecnologie>,
+  constructor(
+    @InjectRepository(Tecnologie) private readonly repo: Repository<Tecnologie>,
   ) {}
 
   create(dto: CreateTecnologieDto) {
@@ -15,11 +17,40 @@ export class TecnologiesService {
     return this.repo.save(entity);
   }
 
-  findAll(zone?: ZoneKind, subzone?: string) {
-  const qb = this.repo.createQueryBuilder('t');
-  if (zone)    qb.andWhere(':z = ANY(t.allowed_zones)', { z: zone });
-  if (subzone) qb.andWhere(':sz = ANY(t.allowed_subzones)', { sz: subzone });
-  return qb.getMany();
+  // ✅ versión completa con filtros del mock + paginación
+  async findAll(
+    zone?: ZoneKind,
+    subzone?: string,
+    q?: string,
+    limit = 100,
+    offset = 0,
+  ) {
+    const qb = this.repo.createQueryBuilder('t');
+
+    if (zone) {
+      // Postgres: comparar contra array de texto
+      qb.andWhere(':z = ANY(t.allowed_zones)', { z: zone });
+    }
+    if (subzone) {
+      qb.andWhere(':sz = ANY(t.allowed_subzones)', { sz: subzone });
+    }
+
+    if (q && q.trim()) {
+      const like = `%${q.toLowerCase()}%`;
+      // name / description / provider
+      qb.andWhere(
+        `(LOWER(t.name) LIKE :q OR LOWER(t.description) LIKE :q OR LOWER(t.provider) LIKE :q
+          OR EXISTS (
+            SELECT 1 FROM unnest(t.tags) tag WHERE LOWER(tag) LIKE :q
+          )
+        )`,
+        { q: like },
+      );
+    }
+
+    qb.orderBy('t.name', 'ASC').take(limit).skip(offset);
+
+    return qb.getMany();
   }
 
   async findOne(id: string) {
@@ -29,7 +60,7 @@ export class TecnologiesService {
   }
 
   findByName(name: string) {
-  return this.repo.findOne({ where: { name } }); 
+    return this.repo.findOne({ where: { name } });
   }
 
   async update(id: string, dto: UpdateTecnologieDto) {
@@ -43,4 +74,3 @@ export class TecnologiesService {
     return { deleted: true, id };
   }
 }
-
