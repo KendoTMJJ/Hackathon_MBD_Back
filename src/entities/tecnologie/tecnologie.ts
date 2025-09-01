@@ -36,7 +36,7 @@ export class Tecnologie {
    * Segunda columna "imageUrl", a través de rutas locales
    */
   @ApiProperty({description: 'Ruta local de la imagen', example: '/src/images/nginx.png',})
-  @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: false })
+  @Column({ name: 'image_url', type: 'varchar', length: 2000, nullable: false })
   imageUrl: string;
 
   /**
