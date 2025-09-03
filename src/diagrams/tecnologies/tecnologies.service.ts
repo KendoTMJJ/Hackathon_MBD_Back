@@ -73,4 +73,55 @@ export class TecnologiesService {
     await this.repo.remove(entity);
     return { deleted: true, id };
   }
+
+  async getRequirementsBySubzone(zone?: ZoneKind, subzones?: string[]) {
+    const ZONE_PREFIX: Record<ZoneKind, string> = {
+      cloud: 'cloud-',
+      dmz: 'dmz-',
+      lan: 'lan-',
+      datacenter: 'dc-',
+      ot: 'ot-',
+    };
+
+    const qb = this.repo
+      .createQueryBuilder('t')
+      .select(['t.name', 't.allowedZones', 't.allowedSubzones']);
+
+    // (opcional) si prefieres filtrar en SQL por zona, ajusta al nombre real de la columna
+    // if (zone) qb.andWhere(':z = ANY(t.allowed_zones)', { z: zone });
+
+    const rows = await qb.getMany();
+
+    const filterSet = subzones ? new Set(subzones) : null;
+    const map: Record<string, string[]> = {};
+
+    for (const t of rows) {
+      const subs: string[] = Array.isArray(t.allowedSubzones)
+        ? t.allowedSubzones
+        : [];
+
+      for (const subId of subs) {
+        if (zone) {
+          const pref = ZONE_PREFIX[zone];
+          if (!subId.startsWith(pref)) continue;
+        }
+        if (filterSet && !filterSet.has(subId)) continue;
+
+        const techName = String(t.name ?? '').trim();
+        if (!techName) continue;
+
+        if (!map[subId]) map[subId] = [];
+        if (
+          !map[subId].some((x) => x.toLowerCase() === techName.toLowerCase())
+        ) {
+          map[subId].push(techName);
+        }
+      }
+    }
+
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => a.localeCompare(b, 'es'));
+    }
+    return map;
+  }
 }

@@ -10,7 +10,11 @@ import { SheetsModule } from '../sheets/sheets.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([SharedLink, Document]), SheetsModule],
-  controllers: [SharedLinksController, PublicSharedLinksController, SharedSheetsController],
+  controllers: [
+    SharedLinksController,
+    PublicSharedLinksController,
+    SharedSheetsController,
+  ],
   providers: [SharedLinksService],
   exports: [SharedLinksService],
 })

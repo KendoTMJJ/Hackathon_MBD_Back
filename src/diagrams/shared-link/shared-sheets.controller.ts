@@ -10,9 +10,11 @@ import {
   BadRequestException,
   Get,
 } from '@nestjs/common';
-import { SharedAccessGuard } from './shared-access.guard';
+import { SharedEditPermissionGuard } from './shared-access-permission.guard';
 import { SheetsService } from '../sheets/sheets.service';
 import { CreateSheetDto } from '../sheets/dto/create-sheet.dto';
+import { SharedLink } from '../../entities/shared-link/shared-link';
+import { SharedAccessGuard, SharedLinkRequest } from './shared-access.guard';
 
 @Controller('shared/:token/sheets')
 @UseGuards(SharedAccessGuard)
@@ -20,104 +22,55 @@ export class SharedSheetsController {
   constructor(private readonly sheetsService: SheetsService) {}
 
   @Get()
-  async getSheets(@Req() req: any) {
-    const sharedLink = req.sharedLink;
-    console.log('Getting sheets for shared document:', sharedLink.documentId);
-    
-    try {
-      return await this.sheetsService.listByDocumentViaSharedLink(
-        sharedLink.documentId,
-        sharedLink,
-      );
-    } catch (error) {
-      console.error('Error getting sheets via shared link:', error);
-      throw new BadRequestException(`Error retrieving sheets: ${error.message}`);
-    }
+  async getSheets(@Req() req: SharedLinkRequest) {
+    const link: SharedLink = req.sharedLink;
+    return this.sheetsService.listByDocumentViaSharedLink(
+      link.documentId,
+      link,
+    );
   }
 
   @Post()
-  async createSheet(@Body() dto: CreateSheetDto, @Req() req: any) {
-    const sharedLink = req.sharedLink;
-    
-    const documentId = sharedLink.documentId || sharedLink.document?.id;
-    
-    console.log('CreateSheet request:', { 
-      dto, 
-      extractedDocumentId: documentId,
-      sharedLink: { 
-        id: sharedLink.id, 
-        documentId: sharedLink.documentId,
-        document: sharedLink.document ? { id: sharedLink.document.id } : null,
-        permission: sharedLink.permission 
-      } 
-    });
-
-    if (sharedLink.permission !== 'edit') {
-      throw new BadRequestException(
-        'No tienes permisos para crear hojas en este documento',
-      );
-    }
-
-    if (!documentId) {
-      throw new BadRequestException('Document ID not found in shared link');
-    }
-
+  @UseGuards(SharedEditPermissionGuard)
+  async createSheet(
+    @Body() dto: CreateSheetDto,
+    @Req() req: SharedLinkRequest,
+  ) {
+    const link = req.sharedLink;
     try {
-      const result = await this.sheetsService.createViaSharedLink(
-        documentId, 
+      return await this.sheetsService.createViaSharedLink(
+        link.documentId,
         dto,
-        sharedLink,
+        link,
       );
-      console.log('Sheet created successfully:', result);
-      return result;
-    } catch (error) {
-      console.error('Error creating sheet via shared link:', error);
+    } catch (error: any) {
       throw new BadRequestException(`Error creating sheet: ${error.message}`);
     }
   }
 
   @Delete(':sheetId')
-  async deleteSheet(@Param('sheetId') sheetId: string, @Req() req: any) {
-    const sharedLink = req.sharedLink;
-
-    if (sharedLink.permission !== 'edit') {
-      throw new BadRequestException(
-        'No tienes permisos para eliminar hojas en este documento',
-      );
-    }
-
-    try {
-      await this.sheetsService.deleteViaSharedLink(sheetId, sharedLink);
-      return { success: true };
-    } catch (error) {
-      console.error('Error deleting sheet via shared link:', error);
-      throw new BadRequestException(`Error deleting sheet: ${error.message}`);
-    }
+  @UseGuards(SharedEditPermissionGuard)
+  async deleteSheet(
+    @Param('sheetId') sheetId: string,
+    @Req() req: SharedLinkRequest,
+  ) {
+    const link = req.sharedLink;
+    await this.sheetsService.deleteViaSharedLink(sheetId, link);
+    return { success: true };
   }
 
   @Put(':sheetId')
+  @UseGuards(SharedEditPermissionGuard)
   async updateSheet(
     @Param('sheetId') sheetId: string,
     @Body() updateData: any,
-    @Req() req: any,
+    @Req() req: SharedLinkRequest,
   ) {
-    const sharedLink = req.sharedLink;
-
-    if (sharedLink.permission !== 'edit') {
-      throw new BadRequestException(
-        'No tienes permisos para editar hojas en este documento',
-      );
-    }
-
-    try {
-      return await this.sheetsService.updateViaSharedLink(
-        sheetId,
-        updateData,
-        sharedLink.documentId,
-      );
-    } catch (error) {
-      console.error('Error updating sheet via shared link:', error);
-      throw new BadRequestException(`Error updating sheet: ${error.message}`);
-    }
+    const link = req.sharedLink;
+    return this.sheetsService.updateViaSharedLink(
+      sheetId,
+      updateData,
+      link.documentId,
+    );
   }
 }

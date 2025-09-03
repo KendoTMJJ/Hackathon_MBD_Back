@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { SharedLink } from '../../entities/shared-link/shared-link';
@@ -28,12 +27,12 @@ export class SharedLinksService {
   ): Promise<{ shareUrl: string; link: SharedLink }> {
     await this.canShare(documentId, userSub);
 
+    // token único (colisión improbable, pero puedes reintentar si quieres)
     const token = crypto.randomBytes(32).toString('hex');
 
-    let passwordHash: string | null = null;
-    if (dto.password) {
-      passwordHash = await bcrypt.hash(dto.password, 10);
-    }
+    const passwordHash = dto.password
+      ? await bcrypt.hash(dto.password, 10)
+      : null;
 
     const link = await this.sharedLinks.save(
       this.sharedLinks.create({
@@ -52,26 +51,27 @@ export class SharedLinksService {
     return { shareUrl, link };
   }
 
-  async listByDocument(documentId: string, userSub: string): Promise<SharedLink[]> {
+  async listByDocument(
+    documentId: string,
+    userSub: string,
+  ): Promise<SharedLink[]> {
     await this.canShare(documentId, userSub);
-
     return this.sharedLinks.find({
       where: { documentId, isActive: true },
       order: { createdAt: 'DESC' },
     });
   }
 
-  async getByToken(
-    token: string,
-    password?: string,
-  ): Promise<{ document: Document; permission: 'read' | 'edit' }> {
+  // ⬇ devuelve SharedLink COMPLETO
+  async getByToken(token: string, password?: string): Promise<SharedLink> {
     const link = await this.sharedLinks.findOne({
       where: { token, isActive: true },
       relations: ['document', 'document.project', 'document.sheets'],
     });
 
-    if (!link) throw new NotFoundException('Shared link not found');
-    
+    if (!link) {
+      throw new NotFoundException('Shared link not found');
+    }
 
     if (link.expiresAt && new Date() > link.expiresAt) {
       throw new ForbiddenException('Shared link has expired');
@@ -79,27 +79,22 @@ export class SharedLinksService {
 
     if (link.passwordHash) {
       if (!password) {
-        throw new BadRequestException('Password required');
+        throw new ForbiddenException('Password required');
       }
-      const isValidPassword = await bcrypt.compare(password, link.passwordHash);
-      if (!isValidPassword) {
+      const ok = await bcrypt.compare(password, link.passwordHash);
+      if (!ok) {
         throw new ForbiddenException('Invalid password');
       }
     }
 
-    return { document: link.document, permission: link.permission };
+    return link;
   }
 
   async revoke(linkId: string, userSub: string): Promise<void> {
-    const link = await this.sharedLinks.findOne({
-      where: { id: linkId },
-      relations: ['document'],
-    });
-
+    const link = await this.sharedLinks.findOne({ where: { id: linkId } });
     if (!link) throw new NotFoundException('Shared link not found');
 
     await this.canShare(link.documentId, userSub);
-
     await this.sharedLinks.update(linkId, { isActive: false });
   }
 
@@ -120,7 +115,7 @@ export class SharedLinksService {
     }
   }
 
-async findById(id: string) {
-  return await this.sharedLinks.findOne({ where: { id } });
-}
+  async findById(id: string) {
+    return this.sharedLinks.findOne({ where: { id } });
+  }
 }
