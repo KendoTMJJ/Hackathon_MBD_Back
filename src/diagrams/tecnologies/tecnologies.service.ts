@@ -1,5 +1,9 @@
 // tecnologies.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tecnologie, ZoneKind } from '../../entities/tecnologie/tecnologie';
@@ -64,8 +68,21 @@ export class TecnologiesService {
   }
 
   async update(id: string, dto: UpdateTecnologieDto) {
-    await this.repo.update(id, dto as any);
-    return this.findOne(id);
+    // Si no enviaron body, corta con 400
+    if (!dto) throw new BadRequestException('Body requerido');
+
+    // filtra undefined/null
+    const partial = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined && v !== null),
+    );
+
+    if (Object.keys(partial).length === 0) {
+      throw new BadRequestException('No hay campos para actualizar');
+    }
+
+    const entity = await this.repo.preload({ id, ...partial });
+    if (!entity) throw new NotFoundException('Tecnologie no encontrada');
+    return this.repo.save(entity);
   }
 
   async delete(id: string) {
