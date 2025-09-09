@@ -12,6 +12,7 @@ import { ShareLink } from 'src/entities/shared-link/shared-link';
 
 @Injectable()
 export class CollabService {
+  private alreadyCounted = new Set<string>();
   constructor(
     @InjectRepository(Document) private readonly docRepo: Repository<Document>,
     @InjectRepository(Collaborator)
@@ -72,24 +73,24 @@ export class CollabService {
       return;
     }
 
-    // Invitado via token
     if (sharedToken) {
       const shareLink = await this.shareLinkRepo.findOne({
         where: { slug: sharedToken, isActive: true },
       });
 
       if (!shareLink) throw new ForbiddenException('Enlace inválido');
-      if (shareLink.minRole !== 'editor') {
-        throw new ForbiddenException('Solo lectura - Enlace de solo lectura');
+      if (shareLink.isExpired) throw new ForbiddenException('Enlace expirado');
+      if (shareLink.maxUses && shareLink.uses >= shareLink.maxUses) {
+        throw new ForbiddenException('Límite de usos alcanzado');
       }
       if (shareLink.documentId !== documentId) {
         throw new ForbiddenException('Enlace no válido para este documento');
       }
-
+      if (shareLink.minRole !== 'editor') {
+        throw new ForbiddenException('Solo lectura - Enlace de solo lectura');
+      }
       return;
     }
-
-    throw new ForbiddenException('Acceso no autorizado');
   }
 
   async getPermissions(
@@ -121,6 +122,17 @@ export class CollabService {
     return 'read';
   }
 
+  async incrementShareUseOnce(slug: string) {
+    if (this.alreadyCounted.has(slug)) return;
+    const link = await this.shareLinkRepo.findOne({
+      where: { slug, isActive: true },
+    });
+    if (!link) return;
+    if (link.maxUses && link.uses >= link.maxUses) return;
+    await this.shareLinkRepo.increment({ slug }, 'uses', 1);
+    this.alreadyCounted.add(slug);
+  }
+
   async getSnapshot(documentId: string) {
     const doc = await this.docRepo.findOne({ where: { id: documentId } });
     if (!doc) throw new NotFoundException('Documento no existe');
@@ -145,21 +157,14 @@ export class CollabService {
       const nextData = this.applyOpsPure((current as any).data, ops);
       const nextVersion = version + 1;
 
-      // Incrementar usos si es invitado
-      if (isGuest && actor.startsWith('guest:')) {
-        const token = actor.replace('guest:', '');
-        await manager.increment(ShareLink, { slug: token }, 'uses', 1);
-      }
-
       const res = await manager
         .createQueryBuilder()
         .update(Document)
         .set({
-          data: () => `jsonb_set(data, '{root}', to_jsonb(:nextData::json))`,
+          data: nextData,
           version: nextVersion,
         })
         .where('id = :id AND version = :version', { id: documentId, version })
-        .setParameters({ nextData: JSON.stringify(nextData) })
         .returning('*')
         .execute();
 
