@@ -19,7 +19,16 @@ async function bootstrap() {
     .build();
   const documentFactory = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, documentFactory);
-  app.enableCors();
+  app.enableCors({
+    origin: ['http://localhost:5173'], // 👈 nada de '*'
+    credentials: true, // 👈 permite cookies
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-shared-password', // 👈 tu header custom para password
+    ],
+  });
 
   app.use((req, _res, next) => {
     if (req.path.startsWith('/projects')) {

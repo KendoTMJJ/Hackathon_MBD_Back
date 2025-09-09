@@ -3,7 +3,7 @@ import { share } from 'rxjs';
 import { Collaborator } from 'src/entities/collaborator/collaborator';
 import { Document } from 'src/entities/document/document';
 import { Project } from 'src/entities/project/project';
-import { SharedLink } from 'src/entities/shared-link/shared-link';
+import { ShareLink } from 'src/entities/shared-link/shared-link';
 import { Sheet } from 'src/entities/sheet/sheet';
 import { Snapshot } from 'src/entities/snapshot/snapshot';
 import { Tecnologie } from 'src/entities/tecnologie/tecnologie';
@@ -37,7 +37,7 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
               Collaborator,
               Snapshot,
               Template,
-              SharedLink,
+              ShareLink,
               Sheet,
               Tecnologie,
             ],

@@ -1,49 +1,52 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Delete,
-  Param,
-  Body,
   Query,
+  Post,
+  Patch,
+  Param,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { SharedLinksService } from './shared-links.service';
+import { ShareLinksService } from './shared-links.service';
 import { CreateShareLinkDto } from './dto/create-shared-link.dto';
+import { AuthGuard } from '@nestjs/passport';
 
-@ApiTags('shared-links')
-@Controller()
-export class SharedLinksController {
-  constructor(private readonly sharedLinksService: SharedLinksService) {}
+@Controller('share-links')
+export class ShareLinksController {
+  constructor(private readonly svc: ShareLinksService) {}
 
-  @Post('documents/:id/share')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Crear link compartido' })
-  @ApiResponse({ status: 201, description: 'Link creado exitosamente' })
-  async createShare(
-    @Param('id') documentId: string,
-    @Body() dto: CreateShareLinkDto,
-    @Req() req: any,
-  ) {
-    return this.sharedLinksService.create(documentId, dto, req.user.sub);
+  @Post()
+  create(@Body() dto: CreateShareLinkDto, @Req() req: any) {
+    return this.svc.create(dto, req.user.sub);
   }
 
-  @Get('documents/:id/shares')
+  // 👇 para el modal
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Listar links compartidos' })
-  @ApiResponse({ status: 200, description: 'Lista de links' })
-  async listShares(@Param('id') documentId: string, @Req() req: any) {
-    return this.sharedLinksService.listByDocument(documentId, req.user.sub);
+  @Get()
+  list(@Query('documentId') documentId: string, @Req() req: any) {
+    return this.svc.listByDocument(documentId, req.user.sub);
   }
 
-  @Delete('documents/shares/:id')
+  // Público
+  @Get(':slug')
+  preview(@Param('slug') slug: string) {
+    return this.svc.preview(slug);
+  }
+
+  // Aceptar invitación (con login)
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Revocar link compartido' })
-  @ApiResponse({ status: 200, description: 'Link revocado exitosamente' })
-  async revokeShare(@Param('id') linkId: string, @Req() req: any) {
-    return this.sharedLinksService.revoke(linkId, req.user.sub);
+  @Post(':slug/accept')
+  accept(@Param('slug') slug: string, @Req() req: any) {
+    return this.svc.accept(slug, req.user.sub);
+  }
+
+  // 👇 revocar
+  @UseGuards(AuthGuard('jwt'))
+  @Patch(':id')
+  revoke(@Param('id') id: string, @Req() req: any) {
+    return this.svc.revoke(id, req.user.sub);
   }
 }

@@ -1,57 +1,79 @@
-import { ApiProperty } from '@nestjs/swagger';
+// src/entities/shared-link/shared-link.ts
 import {
+  Entity,
+  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  Entity,
+  UpdateDateColumn,
   Index,
-  JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
+  JoinColumn,
 } from 'typeorm';
-import { Document } from '../document/document';
+import { Project } from 'src/entities/project/project';
+import { Document } from 'src/entities/document/document';
 
-@Entity('SharedLink', { schema: 'public' })
-export class SharedLink {
-  @ApiProperty({ description: 'ID del link compartido', example: 'uuid' })
-  @PrimaryGeneratedColumn('uuid', { name: 'cod_shared_link' })
+export type ShareScope = 'project' | 'document';
+export type ShareMinRole = 'editor' | 'reader';
+
+@Entity({ name: 'share_link', schema: 'public' })
+export class ShareLink {
+  @PrimaryGeneratedColumn('uuid', { name: 'cod_share_link' })
   id: string;
 
-  @ApiProperty({ description: 'Token único para acceso', example: 'abc123xyz' })
-  @Index({ unique: true })
-  @Column({ name: 'token', type: 'varchar', length: 64 })
-  token: string;
+  @Column({ name: 'slug', type: 'varchar', length: 26, unique: true })
+  @Index('idx_share_slug', { unique: true })
+  slug: string;
 
-  @ApiProperty({ description: 'Permiso', example: 'read' })
-  @Column({ name: 'permission', type: 'varchar' })
-  permission: 'read' | 'edit';
+  @Column({
+    type: 'enum',
+    enum: ['document', 'project'],
+    default: 'document',
+  })
+  scope!: ShareScope;
 
-  @ApiProperty({ description: 'Fecha de expiración', required: false })
+  @Column({ name: 'project_id', type: 'uuid', nullable: true })
+  projectId?: string | null;
+  @ManyToOne(() => Project, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'project_id' })
+  project?: Project | null;
+
+  @Column({ name: 'document_id', type: 'uuid', nullable: true })
+  documentId?: string | null;
+  @ManyToOne(() => Document, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'document_id' })
+  document?: Document | null;
+
+  @Column({
+    name: 'min_role',
+    type: 'enum',
+    enum: ['editor', 'reader'],
+    default: 'reader',
+  })
+  minRole: ShareMinRole;
+
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
-  expiresAt: Date | null;
+  expiresAt?: Date | null;
 
-  @ApiProperty({ description: 'Contraseña hash', required: false })
-  @Column({ name: 'password_hash', type: 'varchar', nullable: true })
-  passwordHash: string | null;
+  @Column({ name: 'max_uses', type: 'int', nullable: true })
+  maxUses?: number | null;
 
-  @ApiProperty({ description: 'Activo', example: true })
+  @Column({ name: 'uses', type: 'int', default: 0 })
+  uses: number;
+
+  @Column({ name: 'created_by_sub', type: 'varchar', length: 128 })
+  createdBySub: string;
+
+  /** 👇 faltaba esta columna */
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
-
-  @ApiProperty({ description: 'Creador (Auth0 sub)', example: 'auth0|123' })
-  @Column({ name: 'created_by', type: 'varchar' })
-  createdBy: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @ApiProperty({ description: 'Documento', type: () => Document })
-  @Index()
-  @Column({ name: 'document_id', type: 'uuid' })
-  documentId: string;
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 
-  @ManyToOne(() => Document, (d: Document) => d.sharedLinks, {
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'document_id' })
-  document: Document;
+  get isExpired() {
+    return this.expiresAt && new Date() > this.expiresAt;
+  }
 }

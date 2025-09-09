@@ -1,21 +1,23 @@
+// diagrams/shared-link/shared-links.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { SharedLinksService } from './shared-links.service';
-import { SharedLinksController } from './shared-links.controller';
-import { SharedLink } from '../../entities/shared-link/shared-link';
-import { Document } from '../../entities/document/document';
-import { PublicSharedLinksController } from './shared-links.public.controller';
-import { SharedSheetsController } from './shared-sheets.controller';
+
+import { Document } from 'src/entities/document/document';
+import { ShareLink } from 'src/entities/shared-link/shared-link';
+import { Collaborator } from 'src/entities/collaborator/collaborator'; // ⬅️ import
+
 import { SheetsModule } from '../sheets/sheets.module';
+import { WsJwtGuard } from './ws-jwt.guard'; // si lo expones desde aquí
+import { ShareLinksService } from './shared-links.service';
+import { ShareLinksController } from './shared-links.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SharedLink, Document]), SheetsModule],
-  controllers: [
-    SharedLinksController,
-    PublicSharedLinksController,
-    SharedSheetsController,
+  imports: [
+    TypeOrmModule.forFeature([ShareLink, Document, Collaborator]), // ⬅️ añade Collaborator
+    SheetsModule,
   ],
-  providers: [SharedLinksService],
-  exports: [SharedLinksService],
+  controllers: [ShareLinksController],
+  providers: [ShareLinksService, WsJwtGuard],
+  exports: [ShareLinksService, WsJwtGuard],
 })
 export class SharedLinksModule {}

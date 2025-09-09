@@ -49,7 +49,7 @@ export class SheetsService {
       name: dto.name,
       data: dto.data ?? { nodes: [], edges: [] },
       orderIndex: nextOrder,
-      documentId: documentId, 
+      documentId: documentId,
     });
 
     return this.sheets.save(newSheet);
@@ -154,7 +154,7 @@ export class SheetsService {
       .where('d.id = :documentId', { documentId })
       .andWhere(
         '(d.created_by = :userSub OR p.owner_sub = :userSub OR (c.user_sub = :userSub AND c.role IN (:...roles)))',
-        { userSub, roles: ['owner', 'editor', 'viewer'] },
+        { userSub, roles: ['owner', 'editor', 'reader'] },
       )
       .getOne();
 
@@ -243,7 +243,7 @@ export class SheetsService {
       name: dto.name,
       data: dto.data ?? { nodes: [], edges: [] },
       orderIndex: nextOrder,
-      documentId: finalDocumentId, 
+      documentId: finalDocumentId,
     });
 
     try {
@@ -256,7 +256,7 @@ export class SheetsService {
 
   async deleteViaSharedLink(sheetId: string, sharedLink: any): Promise<void> {
     const sheet = await this.sheets.findOne({
-      where: { id: sheetId }, 
+      where: { id: sheetId },
       relations: ['document'],
     });
 

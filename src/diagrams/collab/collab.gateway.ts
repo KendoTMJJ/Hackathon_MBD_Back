@@ -1,226 +1,204 @@
-// src/diagrams/collab/collab.gateway.ts
 import {
   WebSocketGateway,
   WebSocketServer,
   SubscribeMessage,
-  ConnectedSocket,
   MessageBody,
-  WsException,
+  ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { UsePipes, ValidationPipe } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import dayjs from 'dayjs';
+import {
+  UnauthorizedException,
+  ForbiddenException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
+import { CollabService } from './collab.service';
+import * as jwt from 'jsonwebtoken';
 
-import { Document } from 'src/entities/document/document';
-import { Collaborator } from 'src/entities/collaborator/collaborator';
-import { SharedLink } from 'src/entities/shared-link/shared-link';
-
-// ⚠️ Ajusta esta ruta si tu servicio vive en otro módulo
-import { SharedLinksService } from 'src/diagrams/shared-link/shared-links.service';
-import { ChangePayload, CursorPayload, JoinPayload } from './dto/gateway.dto';
-
-type Permission = 'read' | 'edit';
+type AuthSocket = Socket & {
+  userSub?: string;
+  isGuest?: boolean;
+  sharedToken?: string;
+};
 
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
   namespace: '/collab',
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+  },
 })
-@UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+@Injectable()
 export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() io: Server;
 
-  // socketId -> { documentId, permission }
-  private session = new Map<
-    string,
-    { documentId: string; permission: Permission }
-  >();
+  constructor(private readonly svc: CollabService) {}
 
-  // documentId -> Map<socketId, { id, name, color }>
-  private presence = new Map<
-    string,
-    Map<string, { id: string; name: string; color: string }>
-  >();
+  // 👇 Autenticación inicial al conectar
+  async handleConnection(client: AuthSocket) {
+    try {
+      const { token, sharedToken } = client.handshake.auth;
 
-  constructor(
-    @InjectRepository(Document) private readonly docRepo: Repository<Document>,
-    @InjectRepository(Collaborator)
-    private readonly collabRepo: Repository<Collaborator>,
-    @InjectRepository(SharedLink)
-    private readonly linkRepo: Repository<SharedLink>,
-    private readonly sharedLinks: SharedLinksService,
-  ) {}
+      if (sharedToken) {
+        client.userSub = `guest:${sharedToken}`;
+        client.isGuest = true;
+        client.sharedToken = sharedToken;
+        return;
+      }
 
-  async handleConnection(client: Socket) {
-    // Si usas JWT (Auth0, etc.), recupéralo aquí y guarda el sub:
-    // const bearer = client.handshake.auth?.token ?? client.handshake.headers.authorization;
-    // client.data.sub = await this.verifyJwtAndGetSub(bearer);
+      if (token) {
+        const decoded = jwt.decode(token) as any;
+        if (!decoded?.sub) throw new Error('JWT inválido');
+        client.userSub = decoded.sub;
+        client.isGuest = false;
+        return;
+      }
+
+      client.disconnect();
+    } catch (err) {
+      console.error('Error en handleConnection:', err);
+      client.disconnect();
+    }
   }
 
-  async handleDisconnect(client: Socket) {
-    await this.forceLeave(client);
+  async handleDisconnect(client: AuthSocket) {
+    const rooms = Array.from(client.rooms).filter((r) => r !== client.id);
+    for (const room of rooms) {
+      if (room.startsWith('doc:') && client.userSub) {
+        this.io.to(room).emit('presence:left', {
+          userSub: client.userSub,
+          kind: client.isGuest ? 'guest' : 'user',
+        });
+      }
+    }
   }
 
-  // -------------------- JOIN / LEAVE --------------------
-
-  @SubscribeMessage('join_document')
+  // 👇 Unirse a documento
+  @SubscribeMessage('join')
   async onJoin(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: JoinPayload,
+    @MessageBody() data: { documentId: string },
+    @ConnectedSocket() client: AuthSocket,
   ) {
-    const { documentId, token, password, user } = payload;
+    if (!client.userSub) throw new UnauthorizedException('No autenticado');
 
-    const doc = await this.docRepo.findOne({ where: { id: documentId } });
-    if (!doc) throw new WsException('Documento no encontrado');
+    if (client.isGuest) {
+      await this.svc.ensureCanJoin(
+        data.documentId,
+        client.userSub,
+        client.sharedToken,
+      );
+    } else {
+      await this.svc.ensureCanJoin(data.documentId, client.userSub);
+    }
 
-    // Si ya estaba en otra room, limpiamos antes
-    await this.forceLeave(client);
-
-    const permission = await this.resolvePermission(
-      client,
-      documentId,
-      token,
-      password,
+    const permission = await this.svc.getPermissions(
+      data.documentId,
+      client.isGuest ? undefined : client.userSub,
+      client.isGuest ? client.sharedToken : undefined,
     );
 
-    await client.join(documentId);
-    this.session.set(client.id, { documentId, permission });
-    client.data.user = user;
+    const room = `doc:${data.documentId}`;
+    await client.join(room);
 
-    const room = this.ensureRoom(documentId);
-    room.set(client.id, user);
+    this.io.to(room).emit('presence:joined', {
+      userSub: client.userSub,
+      kind: client.isGuest ? 'guest' : 'user',
+      timestamp: Date.now(),
+    });
 
-    // Notificar entrada y enviar lista actualizada
-    client.to(documentId).emit('user_joined', user);
-
-    const usersList = Array.from(room.values());
-    client.emit(
-      'users_list',
-      usersList.filter((u) => u.id !== user.id),
-    );
-    this.io.to(documentId).emit('users_list', usersList);
-
-    // opcional: ack con permiso calculado
-    client.emit('join_ack', { permission });
+    const snapshot = await this.svc.getSnapshot(data.documentId);
+    return { ok: true, snapshot, permission, userSub: client.userSub };
   }
 
-  @SubscribeMessage('leave_document')
-  async onLeave(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: { documentId: string },
-  ) {
-    await client.leave(body.documentId);
-    await this.forceLeave(client);
-  }
-
-  // -------------------- CAMBIOS --------------------
-
-  @SubscribeMessage('document_change')
+  // 👇 Aplicar cambios
+  @SubscribeMessage('change')
   async onChange(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: ChangePayload,
+    @MessageBody() payload: { documentId: string; version: number; ops: any },
+    @ConnectedSocket() client: AuthSocket,
   ) {
-    const sess = this.session.get(client.id);
-    if (!sess || sess.documentId !== body.documentId) {
-      throw new WsException('No unido al documento');
+    if (!client.userSub) throw new UnauthorizedException('No autenticado');
+
+    if (client.isGuest) {
+      await this.svc.ensureCanEdit(
+        payload.documentId,
+        client.userSub,
+        client.sharedToken,
+      );
+    } else {
+      await this.svc.ensureCanEdit(payload.documentId, client.userSub);
     }
-    if (sess.permission !== 'edit') {
-      throw new WsException('Solo lectura');
+
+    try {
+      const next = await this.svc.applyOps(
+        payload.documentId,
+        payload.version,
+        payload.ops,
+        client.userSub,
+        client.isGuest,
+      );
+
+      const room = `doc:${payload.documentId}`;
+      client.to(room).emit('change', {
+        version: next.version,
+        ops: next.appliedOps,
+        actor: client.userSub,
+        timestamp: Date.now(),
+      });
+
+      return { ok: true, version: next.version };
+    } catch (err) {
+      console.error('Error en change:', err);
+      if (err instanceof ConflictException) {
+        client.emit('change:error', {
+          type: 'version_conflict',
+          message: 'El documento ha cambiado, recarga el estado',
+        });
+      }
+      throw err;
     }
-    client.to(body.documentId).emit('document_change', body.change);
   }
 
-  // -------------------- CURSORES --------------------
-
-  @SubscribeMessage('cursor_update')
-  async onCursor(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: CursorPayload,
+  // 👇 Presencia (cursor, selección)
+  @SubscribeMessage('presence')
+  async onPresence(
+    @MessageBody()
+    data: {
+      documentId: string;
+      cursor?: { x: number; y: number };
+      selection?: any;
+    },
+    @ConnectedSocket() client: AuthSocket,
   ) {
-    const sess = this.session.get(client.id);
-    if (!sess || sess.documentId !== body.documentId) return;
+    if (!client.userSub) return;
 
-    client.to(body.documentId).emit('user_cursor', {
-      userId: body.userId,
-      cursor: body.cursor,
+    const room = `doc:${data.documentId}`;
+    client.to(room).emit('presence', {
+      userSub: client.userSub,
+      kind: client.isGuest ? 'guest' : 'user',
+      cursor: data.cursor,
+      selection: data.selection,
+      timestamp: Date.now(),
     });
   }
 
-  // -------------------- HELPERS --------------------
+  // 👇 Salir de documento
+  @SubscribeMessage('leave')
+  async onLeave(
+    @MessageBody() data: { documentId: string },
+    @ConnectedSocket() client: AuthSocket,
+  ) {
+    const room = `doc:${data.documentId}`;
+    await client.leave(room);
 
-  private ensureRoom(documentId: string) {
-    if (!this.presence.has(documentId)) {
-      this.presence.set(documentId, new Map());
-    }
-    return this.presence.get(documentId)!;
-  }
-
-  private async forceLeave(client: Socket) {
-    const sess = this.session.get(client.id);
-    if (!sess) return;
-
-    const { documentId } = sess;
-    this.session.delete(client.id);
-
-    const room = this.presence.get(documentId);
-    if (!room) return;
-
-    const leftUser = room.get(client.id);
-    room.delete(client.id);
-
-    if (leftUser) {
-      this.io.to(documentId).emit('user_left', leftUser.id);
-    }
-    this.io.to(documentId).emit('users_list', Array.from(room.values()));
-
-    if (room.size === 0) this.presence.delete(documentId);
-  }
-
-  private async resolvePermission(
-    client: Socket,
-    documentId: string,
-    token?: string,
-    password?: string,
-  ): Promise<Permission> {
-    // 1) Link compartido (valida activo/expiración/password)
-    if (token) {
-      const link = await this.sharedLinks.getByToken(token, password);
-      if (link.documentId !== documentId) {
-        throw new WsException('El token no corresponde a este documento');
-      }
-      if (
-        !link.isActive ||
-        (link.expiresAt && dayjs(link.expiresAt).isBefore(dayjs()))
-      ) {
-        throw new WsException('Link inválido o expirado');
-      }
-      return link.permission;
-    }
-
-    // 2) Colaborador autenticado (si guardaste sub en handleConnection)
-    const sub: string | undefined =
-      client.data?.sub ??
-      (typeof client.handshake.auth?.sub === 'string'
-        ? client.handshake.auth.sub
-        : undefined);
-
-    if (sub) {
-      const collab = await this.collabRepo.findOne({
-        where: { documentId, userSub: sub },
+    if (client.userSub) {
+      this.io.to(room).emit('presence:left', {
+        userSub: client.userSub,
+        kind: client.isGuest ? 'guest' : 'user',
       });
-      if (!collab) throw new WsException('Sin acceso');
-      return collab.role === 'reader' ? 'read' : 'edit';
     }
 
-    // 3) Modo dev (sin JWT): variable de entorno para permitir edición
-    if (process.env.COLLAB_DEV_ALLOW_EDIT === 'true') return 'edit';
-    return 'read';
+    return { ok: true };
   }
-
-  // private async verifyJwtAndGetSub(bearer?: string): Promise<string | undefined> {
-  //   // Verifica firma del JWT (Auth0/RS256) y devuelve `sub`
-  // }
 }
