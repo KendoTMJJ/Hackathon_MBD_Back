@@ -6,15 +6,11 @@ import { Document } from 'src/entities/document/document';
 import { ShareLink } from 'src/entities/shared-link/shared-link';
 import { Collaborator } from 'src/entities/collaborator/collaborator';
 
-import { SheetsModule } from '../sheets/sheets.module';
 import { ShareLinksService } from './shared-links.service';
 import { ShareLinksController } from './shared-links.controller';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([ShareLink, Document, Collaborator]),
-    SheetsModule,
-  ],
+  imports: [TypeOrmModule.forFeature([ShareLink, Document, Collaborator])],
   controllers: [ShareLinksController],
   providers: [ShareLinksService],
   exports: [ShareLinksService],

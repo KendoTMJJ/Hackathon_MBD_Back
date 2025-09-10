@@ -145,4 +145,12 @@ export class ShareLinksService {
       return { ok: true };
     });
   }
+
+async getByToken(slug: string) {
+  return this.repo.findOne({
+    where: { slug, isActive: true },
+    relations: ['document', 'project'],
+  });
+}
+
 }

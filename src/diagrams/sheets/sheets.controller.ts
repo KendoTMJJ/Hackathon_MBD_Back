@@ -9,12 +9,16 @@ import {
   Req,
   UseGuards,
   Put,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SheetsService } from './sheets.service';
 import { CreateSheetDto } from './dto/create-sheet.dto';
 import { UpdateSheetDto } from './dto/update-sheet.dto';
+import { ShareLinksService } from '../shared-link/shared-links.service';
+
+/* =================== CONTROLADORES PROTEGIDOS (JWT) =================== */
 
 @ApiTags('sheets')
 @UseGuards(AuthGuard('jwt'))
@@ -101,5 +105,99 @@ export class SheetsReorderController {
     @Req() req: any,
   ) {
     return this.sheetsService.update(sheetId, dto, req.user.sub);
+  }
+}
+
+/* =================== CONTROLADOR “SHARED LINK” (SIN JWT) =================== */
+/* Este es el que evita el 403 para invitados con token compartido. */
+@ApiTags('shared-sheets')
+@Controller('shared-links/:token/documents/:documentId/sheets')
+export class SharedSheetsController {
+  constructor(
+    private readonly sheetsService: SheetsService,
+    private readonly sharedLinksService: ShareLinksService,
+  ) {}
+
+  private async getLink(token: string) {
+    const link = await this.sharedLinksService.getByToken(token);
+    if (!link) throw new BadRequestException('Invalid shared link token');
+    
+    // Verificar si el link está activo y no ha expirado
+    if (!link.isActive) {
+      throw new BadRequestException('Shared link is inactive');
+    }
+    
+    if (link.isExpired) {
+      throw new BadRequestException('Shared link has expired');
+    }
+    
+    // Verificar límite de usos si está configurado
+    if (link.maxUses && link.uses >= link.maxUses) {
+      throw new BadRequestException('Shared link usage limit exceeded');
+    }
+    
+    return link;
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Listar hojas (acceso por link compartido)' })
+  async listByDocumentShared(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+  ) {
+    const link = await this.getLink(token);
+    return this.sheetsService.listByDocumentViaSharedLink(documentId, link);
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Crear hoja (acceso por link compartido)' })
+  async createShared(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+    @Body() dto: CreateSheetDto,
+  ) {
+    const link = await this.getLink(token);
+    
+    // Verificar permisos de edición usando la propiedad correcta
+    if (link.minRole !== 'editor') {
+      throw new BadRequestException('No edit permission for shared link');
+    }
+    
+    return this.sheetsService.createViaSharedLink(documentId, dto, link);
+  }
+
+  @Patch(':sheetId')
+  @ApiOperation({ summary: 'Actualizar hoja (acceso por link compartido)' })
+  async updateShared(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: UpdateSheetDto,
+  ) {
+    const link = await this.getLink(token);
+    
+    // Verificar permisos de edición
+    if (link.minRole !== 'editor') {
+      throw new BadRequestException('No edit permission for shared link');
+    }
+    
+    return this.sheetsService.updateViaSharedLink(sheetId, dto, documentId);
+  }
+
+  @Delete(':sheetId')
+  @ApiOperation({ summary: 'Eliminar hoja (acceso por link compartido)' })
+  async deleteShared(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+    @Param('sheetId') sheetId: string,
+  ) {
+    const link = await this.getLink(token);
+    
+    // Verificar permisos de edición
+    if (link.minRole !== 'editor') {
+      throw new BadRequestException('No edit permission for shared link');
+    }
+    
+    return this.sheetsService.deleteViaSharedLink(sheetId, link);
   }
 }

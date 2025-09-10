@@ -22,16 +22,15 @@ export class CollabService {
     private readonly ds: DataSource,
   ) {}
 
+  // <- userSub ahora es OPCIONAL
   async ensureCanJoin(
     documentId: string,
-    userSub: string,
+    userSub?: string,
     sharedToken?: string,
   ) {
     // Usuario autenticado
     if (userSub && !sharedToken) {
-      const collab = await this.collabRepo.findOne({
-        where: { documentId, userSub },
-      });
+      const collab = await this.collabRepo.findOne({ where: { documentId, userSub } });
       if (!collab) throw new ForbiddenException('No tienes acceso');
       return;
     }
@@ -41,32 +40,29 @@ export class CollabService {
       const shareLink = await this.shareLinkRepo.findOne({
         where: { slug: sharedToken, isActive: true },
       });
-
       if (!shareLink) throw new ForbiddenException('Enlace inválido');
       if (shareLink.isExpired) throw new ForbiddenException('Enlace expirado');
       if (shareLink.maxUses && shareLink.uses >= shareLink.maxUses) {
         throw new ForbiddenException('Límite de usos alcanzado');
       }
-      if (shareLink.documentId !== documentId) {
+      if (String(shareLink.documentId) !== String(documentId)) {
         throw new ForbiddenException('Enlace no válido para este documento');
       }
-
       return;
     }
 
     throw new ForbiddenException('Acceso no autorizado');
   }
 
+  // <- userSub ahora es OPCIONAL
   async ensureCanEdit(
     documentId: string,
-    userSub: string,
+    userSub?: string,
     sharedToken?: string,
   ) {
     // Usuario autenticado
     if (userSub && !sharedToken) {
-      const collab = await this.collabRepo.findOne({
-        where: { documentId, userSub },
-      });
+      const collab = await this.collabRepo.findOne({ where: { documentId, userSub } });
       if (!collab || collab.role === 'reader') {
         throw new ForbiddenException('Solo lectura');
       }
@@ -83,7 +79,7 @@ export class CollabService {
       if (shareLink.maxUses && shareLink.uses >= shareLink.maxUses) {
         throw new ForbiddenException('Límite de usos alcanzado');
       }
-      if (shareLink.documentId !== documentId) {
+      if (String(shareLink.documentId) !== String(documentId)) {
         throw new ForbiddenException('Enlace no válido para este documento');
       }
       if (shareLink.minRole !== 'editor') {
@@ -91,19 +87,21 @@ export class CollabService {
       }
       return;
     }
+
+    throw new ForbiddenException('Acceso no autorizado');
   }
 
+  // <- puede devolver null si no hay acceso real
   async getPermissions(
     documentId: string,
     userSub?: string,
     sharedToken?: string,
-  ): Promise<'read' | 'edit'> {
+  ): Promise<'read' | 'edit' | null> {
     // Usuario autenticado
     if (userSub && !sharedToken) {
-      const collab = await this.collabRepo.findOne({
-        where: { documentId, userSub },
-      });
-      return collab?.role === 'editor' ? 'edit' : 'read';
+      const collab = await this.collabRepo.findOne({ where: { documentId, userSub } });
+      if (!collab) return null;
+      return collab.role === 'editor' ? 'edit' : 'read';
     }
 
     // Invitado via token
@@ -111,22 +109,19 @@ export class CollabService {
       const shareLink = await this.shareLinkRepo.findOne({
         where: { slug: sharedToken, isActive: true },
       });
-
-      if (!shareLink || shareLink.documentId !== documentId) {
-        return 'read';
-      }
+      if (!shareLink) return null;
+      if (String(shareLink.documentId) !== String(documentId)) return null;
+      if (shareLink.isExpired) return null;
 
       return shareLink.minRole === 'editor' ? 'edit' : 'read';
     }
 
-    return 'read';
+    return null; // sin userSub y sin token => no acceso
   }
 
   async incrementShareUseOnce(slug: string) {
     if (this.alreadyCounted.has(slug)) return;
-    const link = await this.shareLinkRepo.findOne({
-      where: { slug, isActive: true },
-    });
+    const link = await this.shareLinkRepo.findOne({ where: { slug, isActive: true } });
     if (!link) return;
     if (link.maxUses && link.uses >= link.maxUses) return;
     await this.shareLinkRepo.increment({ slug }, 'uses', 1);
@@ -147,12 +142,9 @@ export class CollabService {
     isGuest: boolean = false,
   ) {
     return this.ds.transaction(async (manager) => {
-      const current = await manager.findOne(Document, {
-        where: { id: documentId },
-      });
+      const current = await manager.findOne(Document, { where: { id: documentId } });
       if (!current) throw new NotFoundException('Documento no existe');
-      if ((current as any).version !== version)
-        throw new ConflictException('Version conflict');
+      if ((current as any).version !== version) throw new ConflictException('Version conflict');
 
       const nextData = this.applyOpsPure((current as any).data, ops);
       const nextVersion = version + 1;
@@ -160,40 +152,30 @@ export class CollabService {
       const res = await manager
         .createQueryBuilder()
         .update(Document)
-        .set({
-          data: nextData,
-          version: nextVersion,
-        })
+        .set({ data: nextData, version: nextVersion })
         .where('id = :id AND version = :version', { id: documentId, version })
         .returning('*')
         .execute();
 
-      if (res.affected !== 1)
-        throw new ConflictException('Optimistic lock failed');
+      if (res.affected !== 1) throw new ConflictException('Optimistic lock failed');
 
       return { version: nextVersion, appliedOps: ops };
     });
   }
 
   private applyOpsPure(data: any, ops: any): any {
-    // Implementación mejorada para merge seguro
     if (ops.apply && typeof ops.apply === 'object') {
       return { ...data, ...ops.apply };
     }
-
-    // Soporte para operaciones específicas
     if (ops.nodes && Array.isArray(ops.nodes)) {
       return { ...data, nodes: ops.nodes };
     }
-
     if (ops.edges && Array.isArray(ops.edges)) {
       return { ...data, edges: ops.edges };
     }
-
     if (typeof ops.title === 'string') {
       return { ...data, title: ops.title };
     }
-
-    return data; // No changes
+    return data;
   }
 }

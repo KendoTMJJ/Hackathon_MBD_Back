@@ -1,4 +1,3 @@
-// src/diagrams/collab/collab.gateway.ts
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -10,56 +9,31 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import {
-  UnauthorizedException,
-  ConflictException,
   Injectable,
+  UnauthorizedException,
+  ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { CollabService } from './collab.service';
-import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
+import { SheetsService } from '../sheets/sheets.service';
+
+type Role = 'read' | 'edit';
+
+interface Ctx {
+  documentId: string;
+  role: Role;
+  userSub: string | null;
+  isGuest: boolean;
+  sharedToken?: string;
+}
 
 type AuthSocket = Socket & {
-  userSub?: string;
+  ctx?: Ctx;
   isGuest?: boolean;
   sharedToken?: string;
+  userSub?: string | null;
 };
 
-// ── Helpers ENV ────────────────────────────────────────────────────────────────
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || !String(v).trim()) {
-    throw new Error(`[CollabGateway] Missing env var ${name}`);
-  }
-  return String(v);
-}
-function getAuth0Domain(): string {
-  // sin protocolo y sin slash final
-  return requireEnv('AUTH0_DOMAIN')
-    .replace(/^https?:\/\//, '')
-    .replace(/\/$/, '');
-}
-function getAudience(): string {
-  return requireEnv('AUTH0_AUDIENCE');
-}
-
-// JWKS perezoso (se crea cuando se necesita, no en import)
-let RS256_JWKS: ReturnType<typeof createRemoteJWKSet> | null = null;
-
-function getJwks() {
-  if (!RS256_JWKS) {
-    const domain = getAuth0Domain();
-    RS256_JWKS = createRemoteJWKSet(
-      new URL(`https://${domain}/.well-known/jwks.json`),
-      {
-        // menos carga contra Auth0
-        cacheMaxAge: 10 * 60 * 1000, // 10 min
-        cooldownDuration: 5_000, // espera entre reintentos
-      },
-    );
-  }
-  return RS256_JWKS;
-}
-
-// ── Gateway ───────────────────────────────────────────────────────────────────
 @WebSocketGateway({
   namespace: '/collab',
   cors: {
@@ -69,139 +43,136 @@ function getJwks() {
 })
 @Injectable()
 export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer() io: Server;
+  @WebSocketServer() server!: Server;
 
-  constructor(private readonly svc: CollabService) {}
+  private bySocket = new Map<string, Ctx>();
 
-  // Handshake WS con autenticación
+  constructor(
+    private readonly sheets: SheetsService,
+    private readonly collabService: CollabService,
+  ) {}
+
+  /* ===================== CONEXIÓN ===================== */
   async handleConnection(client: AuthSocket) {
     try {
-      const { token, sharedToken } = (client.handshake.auth || {}) as {
-        token?: string;
+      const auth = (client.handshake.auth || {}) as {
+        type?: 'user' | 'guest';
+        token?: string;           // (si luego validas JWT)
         sharedToken?: string;
+        sharedPassword?: string;  // (si lo usas en service)
+        sub?: string;             // opcional
       };
 
-      // Invitado por link compartido
-      if (sharedToken) {
-        client.userSub = `guest:${sharedToken}`;
-        client.isGuest = true;
-        client.sharedToken = sharedToken;
-        return;
-      }
+      // NO EXIGIMOS documentId AQUÍ. Se valida en 'join'.
+      client.isGuest = auth.type === 'guest' && !!auth.sharedToken;
+      client.sharedToken = auth.sharedToken;
+      client.userSub = client.isGuest
+        ? `guest:${auth.sharedToken}:${client.id}`
+        : (auth.sub ?? null);
 
-      // Usuario autenticado con JWT RS256 (Auth0)
-      if (token) {
-        const { payload } = await jwtVerify(token, getJwks(), {
-          audience: getAudience(),
-          issuer: `https://${getAuth0Domain()}/`,
-          algorithms: ['RS256'],
-        });
-        const sub = (payload as JWTPayload).sub;
-        if (!sub) throw new Error('JWT sin sub');
-        client.userSub = sub;
-        client.isGuest = false;
-        return;
-      }
+      // ctx “placeholder” sin documentId hasta el join
+      client.ctx = {
+        documentId: '',
+        role: 'read',
+        userSub: client.userSub ?? null,
+        isGuest: !!client.isGuest,
+        sharedToken: client.sharedToken,
+      };
+      this.bySocket.set(client.id, client.ctx);
 
-      // sin credenciales
-      client.disconnect();
-    } catch (err) {
-      console.error('[CollabGateway] Error en handleConnection:', err);
+      // útil para depurar
+      // console.log('[collab] WS connected', { sid: client.id, guest: client.isGuest });
+      client.emit('ws:ready');
+    } catch (e) {
+      // console.error('[collab] handleConnection error', e);
+      client.emit('ws:deny', { message: 'connection failed' });
       client.disconnect();
     }
   }
 
-  async handleDisconnect(client: AuthSocket) {
-    const rooms = Array.from(client.rooms).filter((r) => r !== client.id);
-    for (const room of rooms) {
-      if (room.startsWith('doc:') && client.userSub) {
-        this.io.to(room).emit('presence:left', {
-          userSub: client.userSub,
-          kind: client.isGuest ? 'guest' : 'user',
-        });
-      }
+  handleDisconnect(client: AuthSocket) {
+    const ctx = this.bySocket.get(client.id);
+    if (ctx && ctx.documentId) {
+      this.server.to(this.docRoom(ctx.documentId)).emit('presence:left', {
+        userSub: ctx.userSub ?? 'guest',
+        kind: ctx.isGuest ? 'guest' : 'user',
+      });
     }
+    this.bySocket.delete(client.id);
   }
 
-  // Unirse a documento
+  private docRoom(documentId: string) {
+    return `doc:${documentId}`;
+  }
+
+  /* ===================== JOIN ===================== */
   @SubscribeMessage('join')
   async onJoin(
     @MessageBody() data: { documentId: string },
     @ConnectedSocket() client: AuthSocket,
   ) {
-    if (!client.userSub) throw new UnauthorizedException('No autenticado');
-    if (!data?.documentId)
-      throw new UnauthorizedException('Documento requerido');
+    const ctx = this.bySocket.get(client.id);
+    if (!ctx) throw new UnauthorizedException('Handshake not established');
+    if (!data?.documentId) throw new UnauthorizedException('documentId required');
 
-    if (client.isGuest) {
-      await this.svc.ensureCanJoin(
-        data.documentId,
-        client.userSub,
-        client.sharedToken,
-      );
-    } else {
-      await this.svc.ensureCanJoin(data.documentId, client.userSub);
-    }
-
-    const permission = await this.svc.getPermissions(
+    // calcular permisos según si es invitado o user
+    const perm = await this.collabService.getPermissions(
       data.documentId,
-      client.isGuest ? undefined : client.userSub,
-      client.isGuest ? client.sharedToken : undefined,
+      ctx.isGuest ? undefined : ctx.userSub ?? undefined,
+      ctx.isGuest ? ctx.sharedToken : undefined,
     );
+    if (!perm) throw new ForbiddenException('No access to document');
 
-    const room = `doc:${data.documentId}`;
-    await client.join(room);
+    ctx.documentId = data.documentId;
+    ctx.role = perm;
+    this.bySocket.set(client.id, ctx);
 
-    this.io.to(room).emit('presence:joined', {
-      userSub: client.userSub,
-      kind: client.isGuest ? 'guest' : 'user',
+    await client.join(this.docRoom(ctx.documentId));
+
+    this.server.to(this.docRoom(ctx.documentId)).emit('presence:joined', {
+      userSub: ctx.userSub ?? 'guest',
+      kind: ctx.isGuest ? 'guest' : 'user',
       timestamp: Date.now(),
     });
 
-    const snapshot = await this.svc.getSnapshot(data.documentId);
-    return { ok: true, snapshot, permission, userSub: client.userSub };
+    const snapshot = await this.collabService.getSnapshot(ctx.documentId);
+
+    // console.log('[collab] join ACK', { sid: client.id, doc: ctx.documentId, role: ctx.role });
+    return { ok: true, snapshot, permission: ctx.role, userSub: ctx.userSub };
   }
 
-  // Cambios con ACK de versión
+  /* ===================== CAMBIOS (ACK versión) ===================== */
   @SubscribeMessage('change')
   async onChange(
     @MessageBody() payload: { documentId: string; version: number; ops: any },
     @ConnectedSocket() client: AuthSocket,
   ) {
-    if (!client.userSub) throw new UnauthorizedException('No autenticado');
-    if (!payload?.documentId)
-      throw new UnauthorizedException('Documento requerido');
-
-    if (client.isGuest) {
-      await this.svc.ensureCanEdit(
-        payload.documentId,
-        client.userSub,
-        client.sharedToken,
-      );
-    } else {
-      await this.svc.ensureCanEdit(payload.documentId, client.userSub);
+    const ctx = this.bySocket.get(client.id);
+    if (!ctx) throw new UnauthorizedException('Handshake not established');
+    if (!payload?.documentId || payload.documentId !== ctx.documentId) {
+      throw new UnauthorizedException('Invalid documentId');
     }
+    if (ctx.role !== 'edit') throw new ForbiddenException('Readonly');
 
     try {
-      const next = await this.svc.applyOps(
-        payload.documentId,
+      const next = await this.collabService.applyOps(
+        ctx.documentId,
         payload.version,
         payload.ops,
-        client.userSub,
-        client.isGuest,
+        ctx.userSub ?? 'unknown',
+        !!ctx.isGuest,
       );
 
-      const room = `doc:${payload.documentId}`;
-      client.to(room).emit('change', {
+      client.to(this.docRoom(ctx.documentId)).emit('change', {
         version: next.version,
         ops: next.appliedOps,
-        actor: client.userSub,
+        actor: ctx.userSub,
         timestamp: Date.now(),
       });
 
       return { ok: true, version: next.version };
     } catch (err) {
-      console.error('[CollabGateway] Error en change:', err);
+      // console.error('[collab] change error', err);
       if (err instanceof ConflictException) {
         client.emit('change:error', {
           type: 'version_conflict',
@@ -212,45 +183,70 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // Presencia
+  /* ===================== PRESENCIA ===================== */
   @SubscribeMessage('presence')
   async onPresence(
-    @MessageBody()
-    data: {
-      documentId: string;
-      cursor?: { x: number; y: number };
-      selection?: any;
-    },
+    @MessageBody() data: { documentId: string; cursor?: { x: number; y: number }; selection?: any },
     @ConnectedSocket() client: AuthSocket,
   ) {
-    if (!client.userSub || !data?.documentId) return;
-    const room = `doc:${data.documentId}`;
-    client.to(room).emit('presence', {
-      userSub: client.userSub,
-      kind: client.isGuest ? 'guest' : 'user',
+    const ctx = this.bySocket.get(client.id);
+    if (!ctx || !data?.documentId || data.documentId !== ctx.documentId) return;
+
+    client.to(this.docRoom(ctx.documentId)).emit('presence', {
+      userSub: ctx.userSub,
+      kind: ctx.isGuest ? 'guest' : 'user',
       cursor: data.cursor,
       selection: data.selection,
       timestamp: Date.now(),
     });
   }
 
-  // Salir
+  /* ===================== LEAVE ===================== */
   @SubscribeMessage('leave')
   async onLeave(
     @MessageBody() data: { documentId: string },
     @ConnectedSocket() client: AuthSocket,
   ) {
-    if (!data?.documentId) return { ok: true };
-
-    const room = `doc:${data.documentId}`;
-    await client.leave(room);
-
-    if (client.userSub) {
-      this.io.to(room).emit('presence:left', {
-        userSub: client.userSub,
-        kind: client.isGuest ? 'guest' : 'user',
-      });
+    const ctx = this.bySocket.get(client.id);
+    if (!ctx || !data?.documentId || data.documentId !== ctx.documentId) {
+      return { ok: true };
     }
+    await client.leave(this.docRoom(ctx.documentId));
+    this.server.to(this.docRoom(ctx.documentId)).emit('presence:left', {
+      userSub: ctx.userSub,
+      kind: ctx.isGuest ? 'guest' : 'user',
+    });
     return { ok: true };
+  }
+
+  /* ===================== PATCH HOJA (con versión) ===================== */
+  @SubscribeMessage('sheet:patch')
+  async onSheetPatch(
+    @MessageBody() body: { sheetId: string; nodes?: any[]; edges?: any[]; baseVersion?: number },
+    @ConnectedSocket() client: AuthSocket,
+  ) {
+    const ctx = this.bySocket.get(client.id);
+    if (!ctx) throw new UnauthorizedException('Handshake not established');
+    if (ctx.role !== 'edit') throw new ForbiddenException('Readonly');
+
+    const res = await this.sheets.applyPatchWithVersion({
+      sheetId: body.sheetId,
+      baseVersion: body.baseVersion ?? 0,
+      nodes: body.nodes,
+      edges: body.edges,
+      patch: undefined,
+      actor: ctx.userSub ?? 'unknown',
+    });
+
+    this.server.to(this.docRoom(res.documentId)).emit('sheet:snapshot', {
+      sheetId: res.sheetId,
+      nodes: res.nodes,
+      edges: res.edges,
+      version: res.version,
+      actor: ctx.userSub,
+      timestamp: Date.now(),
+    });
+
+    return { ok: true, version: res.version };
   }
 }

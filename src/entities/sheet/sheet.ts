@@ -9,6 +9,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 
 @Entity('Sheet', { schema: 'public' })
@@ -31,6 +32,9 @@ export class Sheet {
   })
   @Column({ name: 'data', type: 'jsonb', default: () => `'{}'` })
   data: Record<string, any>;
+
+  @VersionColumn({ name: 'version', default: 0 })
+  version: number;
 
   @ApiProperty({ description: 'Activa', example: true })
   @Column({ name: 'is_active', type: 'boolean', default: true })

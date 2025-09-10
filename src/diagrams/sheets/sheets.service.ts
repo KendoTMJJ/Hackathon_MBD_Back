@@ -331,4 +331,48 @@ export class SheetsService {
 
     return activeSheetsQueryBuilder;
   }
+
+// sheets.service.ts
+async applyPatchWithVersion(input: {
+  sheetId: string; baseVersion: number; nodes?: any[]; edges?: any[]; patch?: any; actor: string;
+}) {
+  const sheet = await this.sheets.findOne({ where: { id: input.sheetId } });
+  if (!sheet) throw new NotFoundException('Sheet not found');
+
+  // si el cliente está desfasado, devolvemos el estado actual
+  if ((input.baseVersion ?? 0) < (sheet.version ?? 0)) {
+    const data = sheet.data ?? { nodes: [], edges: [] };
+    return {
+      sheetId: sheet.id,
+      documentId: sheet.documentId,
+      nodes: data.nodes ?? [],
+      edges: data.edges ?? [],
+      version: sheet.version ?? 0,
+    };
+  }
+
+  const current = sheet.data ?? { nodes: [], edges: [] };
+
+  // puedes soportar 'patch' si usas json-patch; por ahora merge "full state"
+  const next = {
+    nodes: Array.isArray(input.nodes) ? input.nodes : (current.nodes ?? []),
+    edges: Array.isArray(input.edges) ? input.edges : (current.edges ?? []),
+  };
+
+  const newVersion = (sheet.version ?? 0) + 1;
+
+  await this.sheets.update({ id: input.sheetId }, {
+    data: next,
+    version: newVersion,
+    updatedAt: new Date(),
+  });
+
+  return {
+    sheetId: sheet.id,
+    documentId: sheet.documentId,
+    ...next,
+    version: newVersion,
+  };
+}
+
 }
