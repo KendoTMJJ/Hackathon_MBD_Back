@@ -27,6 +27,7 @@ async function bootstrap() {
       'Content-Type',
       'Authorization',
       'x-shared-password', // 👈 tu header custom para password
+      "x-shared-token",
     ],
   });
 

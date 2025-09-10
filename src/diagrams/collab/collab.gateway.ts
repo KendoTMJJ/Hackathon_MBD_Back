@@ -36,6 +36,8 @@ type AuthSocket = Socket & {
 
 @WebSocketGateway({
   namespace: '/collab',
+  path: '/socket.io',
+  transports: ['websocket', 'polling'],
   cors: {
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true,
@@ -121,6 +123,8 @@ export class CollabGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ctx.isGuest ? undefined : ctx.userSub ?? undefined,
       ctx.isGuest ? ctx.sharedToken : undefined,
     );
+    console.log('[collab] join perm:', perm, { guest: ctx.isGuest, sharedToken: ctx.sharedToken });
+
     if (!perm) throw new ForbiddenException('No access to document');
 
     ctx.documentId = data.documentId;
