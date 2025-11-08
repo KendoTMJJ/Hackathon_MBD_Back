@@ -9,9 +9,9 @@ import { CollabModule } from './collab/collab.module';
 import { TemplatesModule } from './templates/templates.module';
 import { SharedLinksModule } from './shared-link/shared-links.module';
 import { SheetsService } from './sheets/sheets.service';
-import { SheetsController } from './sheets/sheets.controller';
 import { SheetsModule } from './sheets/sheets.module';
 import { TecnologiesModule } from './tecnologies/tecnologies.module';
+import { SheetsController } from './sheets/sheets.controller';
 
 @Module({
   imports: [
@@ -23,15 +23,7 @@ import { TecnologiesModule } from './tecnologies/tecnologies.module';
     SheetsModule,
     TecnologiesModule,
   ],
-  providers: [
-    ProjectsService,
-    DocumentsService,
-    SheetsService,
-  ],
-  controllers: [
-    ProjectsController,
-    DocumentsController,
-    SheetsController,
-  ],
+  providers: [ProjectsService, DocumentsService, SheetsService],
+  controllers: [ProjectsController, DocumentsController, SheetsController],
 })
 export class DiagramsModule {}
