@@ -10,8 +10,8 @@ import { TemplatesModule } from './templates/templates.module';
 import { SharedLinksModule } from './shared-link/shared-links.module';
 import { SheetsService } from './sheets/sheets.service';
 import { SheetsModule } from './sheets/sheets.module';
-import { TecnologiesModule } from './tecnologies/tecnologies.module';
 import { SheetsController } from './sheets/sheets.controller';
+import { TechnologiesModule } from './tecnologies/technologies.module';
 
 @Module({
   imports: [
@@ -21,7 +21,7 @@ import { SheetsController } from './sheets/sheets.controller';
     TemplatesModule,
     SharedLinksModule,
     SheetsModule,
-    TecnologiesModule,
+    TechnologiesModule,
   ],
   providers: [ProjectsService, DocumentsService, SheetsService],
   controllers: [ProjectsController, DocumentsController, SheetsController],

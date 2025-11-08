@@ -11,7 +11,6 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
 } from '@nestjs/common';
-import { TecnologiesService } from './tecnologies.service';
 import { CreateTecnologieDto } from './dto/create-tecnologie.dto';
 import { UpdateTecnologieDto } from './dto/update-tecnologie.dto';
 import { ZONE_TYPES, ZoneType } from 'src/entities/tecnologie/tecnology';
@@ -22,6 +21,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
+import { TechnologiesService } from './technologies.service';
 
 /**
  * Controller for technology management operations
@@ -32,9 +32,9 @@ import {
  * requirements mapping by zones and subzones.
  */
 @ApiTags('technologies')
-@Controller('tecnologies')
-export class TecnologiesController {
-  constructor(private readonly service: TecnologiesService) {}
+@Controller('technologies')
+export class TechnologiesController {
+  constructor(private readonly service: TechnologiesService) {}
 
   /**
    * Creates a new technology

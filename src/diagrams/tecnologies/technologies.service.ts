@@ -16,11 +16,11 @@ import { Technology, ZoneType } from 'src/entities/tecnologie/tecnology';
  * deletion, and requirements mapping by zones and subzones.
  */
 @Injectable()
-export class TecnologiesService {
+export class TechnologiesService {
   private readonly repository: Repository<Technology>;
 
   /**
-   * Initializes the TecnologiesService with data source dependency
+   * Initializes the TechnologiesService with data source dependency
    *
    * @param dataSource - TypeORM DataSource for database operations
    */
