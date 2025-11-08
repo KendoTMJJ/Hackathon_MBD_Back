@@ -8,42 +8,50 @@ import {
   VersionColumn,
 } from 'typeorm';
 
-@Entity('Template', { schema: 'public' })
+@Entity('template', { schema: 'public' })
 export class Template {
-  @ApiProperty({ description: 'ID de la plantilla', example: 'uuid' })
-  @PrimaryGeneratedColumn('uuid', { name: 'cod_template' })
+  @ApiProperty({ description: 'Template unique identifier', example: 'uuid' })
+  @PrimaryGeneratedColumn('uuid', { name: 'template_id' })
   id: string;
 
-  @ApiProperty({ description: 'Título', example: 'Diagrama CRM' })
-  @Column({ name: 'title_template', type: 'varchar' })
+  @ApiProperty({ description: 'Template title', example: 'CRM Diagram' })
+  @Column({ name: 'title', type: 'varchar' })
   title: string;
 
   @ApiProperty({
-    description: 'JSON React Flow',
+    description: 'React Flow JSON data',
     example: { nodes: [], edges: [] },
   })
-  @Column({ name: 'data_template', type: 'jsonb', default: () => `'{}'` })
+  @Column({ name: 'data', type: 'jsonb', default: () => `'{}'` })
   data: Record<string, any>;
 
-  @ApiProperty({ description: 'Versión (lock optimista)', example: 1 })
+  @ApiProperty({ description: 'Optimistic lock version', example: 1 })
   @VersionColumn({ name: 'version', type: 'int' })
   version: number;
 
-  @ApiProperty({ description: 'Archivado', example: false })
+  @ApiProperty({
+    description: 'Indicates whether the template is archived',
+    example: false,
+  })
   @Column({ name: 'is_archived', type: 'boolean', default: false })
   isArchived: boolean;
 
-  @ApiProperty({ description: 'Creador (Auth0 sub)', example: 'auth0|123' })
+  @ApiProperty({
+    description: 'Creator user ID (Auth0 sub)',
+    example: 'auth0|123',
+  })
   @Column({ name: 'created_by', type: 'varchar' })
   createdBy: string;
 
+  @ApiProperty({ description: 'Template creation timestamp' })
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
+  @ApiProperty({ description: 'Template last update timestamp' })
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @ApiProperty({ description: 'Tipo', example: 'diagram' })
-  @Column({ name: 'kind_template', type: 'varchar', default: 'diagram' })
+  @ApiProperty({ description: 'Template kind', example: 'diagram' })
+  @Column({ name: 'kind', type: 'varchar', default: 'diagram' })
   kind: string;
 }

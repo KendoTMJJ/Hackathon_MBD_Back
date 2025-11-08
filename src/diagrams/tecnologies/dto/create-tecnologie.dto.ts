@@ -7,7 +7,7 @@ import {
   IsIn,
   Matches,
 } from 'class-validator';
-import { ZONE_KINDS, ZoneKind } from 'src/entities/tecnologie/tecnologie';
+import { ZONE_TYPES, ZoneType } from 'src/entities/tecnologie/tecnology';
 
 export class CreateTecnologieDto {
   @IsString()
@@ -25,8 +25,8 @@ export class CreateTecnologieDto {
 
   @IsArray()
   @ArrayUnique()
-  @IsIn(ZONE_KINDS, { each: true })
-  allowedZones: ZoneKind[];
+  @IsIn(ZONE_TYPES, { each: true })
+  allowedZones: ZoneType[];
 
   @IsOptional()
   @IsArray()

@@ -14,57 +14,65 @@ import {
 import { Project } from '../project/project';
 import { Collaborator } from '../collaborator/collaborator';
 import { Snapshot } from '../snapshot/snapshot';
-import { Sheet } from 'src/entities/sheet/sheet';
-import { ShareLink } from 'src/entities/shared-link/shared-link';
+import { Sheet } from '../sheet/sheet';
+import { ShareLink } from '../shared-link/shared-link';
 
-@Entity('Document', { schema: 'public' })
+@Entity('document', { schema: 'public' })
 export class Document {
-  @ApiProperty({ description: 'ID del documento', example: 'uuid' })
-  @PrimaryGeneratedColumn('uuid', { name: 'cod_document' })
+  @ApiProperty({ description: 'Document unique identifier', example: 'uuid' })
+  @PrimaryGeneratedColumn('uuid', { name: 'document_id' })
   id: string;
 
-  @ApiProperty({ description: 'Título', example: 'Diagrama CRM' })
-  @Column({ name: 'title_document', type: 'varchar' })
+  @ApiProperty({ description: 'Document title', example: 'CRM Diagram' })
+  @Column({ name: 'title', type: 'varchar' })
   title: string;
 
-  @ApiProperty({ description: 'Tipo', example: 'diagram' })
-  @Column({ name: 'kind_document', type: 'varchar', default: 'diagram' })
+  @ApiProperty({ description: 'Document type', example: 'diagram' })
+  @Column({ name: 'kind', type: 'varchar', default: 'diagram' })
   kind: 'diagram' | 'template';
 
   @ApiProperty({
-    description: 'JSON React Flow',
+    description: 'React Flow JSON data',
     example: { nodes: [], edges: [] },
   })
-  @Column({ name: 'data_document', type: 'jsonb', default: () => `'{}'` })
+  @Column({ name: 'data', type: 'jsonb', default: () => `'{}'` })
   data: Record<string, any>;
 
-  @ApiProperty({ description: 'Versión (lock optimista)', example: 1 })
+  @ApiProperty({ description: 'Optimistic lock version', example: 1 })
   @VersionColumn({ name: 'version', type: 'int' })
   version: number;
 
   @ApiProperty({
-    description: 'Plantilla origen',
+    description: 'Origin template ID (optional)',
     example: 'uuid',
     required: false,
   })
   @Column({ name: 'template_id', type: 'uuid', nullable: true })
-  templateId: string | null;
+  templateId?: string | null;
 
-  @ApiProperty({ description: 'Archivado', example: false })
+  @ApiProperty({
+    description: 'Indicates whether the document is archived',
+    example: false,
+  })
   @Column({ name: 'is_archived', type: 'boolean', default: false })
   isArchived: boolean;
 
-  @ApiProperty({ description: 'Creador (Auth0 sub)', example: 'auth0|123' })
+  @ApiProperty({
+    description: 'Creator user (Auth0 sub)',
+    example: 'auth0|123',
+  })
   @Column({ name: 'created_by', type: 'varchar' })
   createdBy: string;
 
+  @ApiProperty({ description: 'Creation timestamp' })
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
+  @ApiProperty({ description: 'Last update timestamp' })
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @ApiProperty({ description: 'Proyecto', type: () => Project })
+  @ApiProperty({ description: 'Associated project ID' })
   @Index()
   @Column({ name: 'project_id', type: 'uuid' })
   projectId: string;
