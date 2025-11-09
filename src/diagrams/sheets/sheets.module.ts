@@ -1,22 +1,26 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SheetsService } from './sheets.service';
-import { 
+import {
   SharedSheetsController,
-  SheetsController, 
-  SheetsManagementController, 
-  SheetsReorderController 
+  SheetsController,
+  SheetsManagementController,
+  SheetsReorderController,
 } from './sheets.controller';
-import { Sheet } from '../../entities/sheet/sheet';
-import { Document } from '../../entities/document/document';
-import { Collaborator } from '../../entities/collaborator/collaborator';
+
 import { SharedLinksModule } from '../shared-link/shared-links.module';
+import { Collaborator } from 'src/entities/collaborator/collaborator';
+import { Sheet } from 'src/entities/sheet/sheet';
+import { Document } from 'src/entities/document/document';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sheet, Document, Collaborator]), SharedLinksModule],
+  imports: [
+    TypeOrmModule.forFeature([Sheet, Document, Collaborator]),
+    SharedLinksModule,
+  ],
   controllers: [
-    SheetsController, 
-    SheetsManagementController, 
+    SheetsController,
+    SheetsManagementController,
     SheetsReorderController,
     SharedSheetsController,
   ],

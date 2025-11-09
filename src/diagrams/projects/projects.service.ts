@@ -3,8 +3,8 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { Project } from 'src/entities/project/project';
 import { DataSource, Repository } from 'typeorm';
-import { Project } from '../../entities/project/project';
 
 /**
  * Service responsible for project management operations

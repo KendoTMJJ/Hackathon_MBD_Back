@@ -5,11 +5,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
-import { Sheet } from '../../entities/sheet/sheet';
-import { Document } from '../../entities/document/document';
-import { Collaborator } from '../../entities/collaborator/collaborator';
+
 import { CreateSheetDto } from './dto/create-sheet.dto';
 import { UpdateSheetDto } from './dto/update-sheet.dto';
+import { Sheet } from 'src/entities/sheet/sheet';
+import { Collaborator } from 'src/entities/collaborator/collaborator';
+import { Document } from 'src/entities/document/document';
 
 /**
  * Service for managing sheet operations including CRUD and shared link access

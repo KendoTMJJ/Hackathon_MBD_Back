@@ -6,12 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
-import { Document } from '../../entities/document/document';
-import { Project } from '../../entities/project/project';
-import { Collaborator } from '../../entities/collaborator/collaborator';
-import { Snapshot } from '../../entities/snapshot/snapshot';
+
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
+import { Document } from 'src/entities/document/document';
+import { Project } from 'src/entities/project/project';
+import { Collaborator } from 'src/entities/collaborator/collaborator';
+import { Snapshot } from 'src/entities/snapshot/snapshot';
 
 /**
  * Service responsible for document management operations
