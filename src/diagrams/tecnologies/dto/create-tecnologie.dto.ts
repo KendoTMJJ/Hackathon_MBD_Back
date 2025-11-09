@@ -2,7 +2,6 @@ import {
   IsString,
   IsOptional,
   IsArray,
-  IsEnum,
   ArrayUnique,
   IsIn,
   Matches,
@@ -13,14 +12,16 @@ export class CreateTecnologieDto {
   @IsString()
   name: string;
 
+  @IsOptional() // porque la entidad permite null
   @IsString()
-  imageUrl: string;
+  imageUrl?: string;
 
-  @IsOptional()
-  @IsString()
-  description?: string;
+  @IsString() // ahora es obligatorio, igual que la entidad
+  description: string;
 
-  @IsString()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
   provider: string[];
 
   @IsArray()
@@ -28,13 +29,13 @@ export class CreateTecnologieDto {
   @IsIn(ZONE_TYPES, { each: true })
   allowedZones: ZoneType[];
 
-  @IsOptional()
+  @IsOptional() // la entidad tiene default []
   @IsArray()
   @ArrayUnique()
-  @Matches(/^(cloud|dmz|lan|datacenter|ot)\/[a-z0-9\-]+$/i, { each: true })
+  @Matches(/^[a-z0-9\-]+$/i, { each: true })
   allowedSubzones?: string[];
 
-  @IsOptional()
+  @IsOptional() // la entidad tiene default []
   @IsArray()
   @ArrayUnique()
   @IsString({ each: true })

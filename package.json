@@ -84,11 +84,13 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
-  "^src/(.*)$": "<rootDir>/$1",
-  "^test/(.*)$": "<rootDir>/../test/$1"
-},
+    "^src/(.*)$": "<rootDir>/$1",
+    "^test/(.*)$": "<rootDir>/../test/$1"
+  },
   "collectCoverageFrom": ["**/*.(t|j)s"],
   "coverageDirectory": "../coverage",
-  "testEnvironment": "node"
+  "testEnvironment": "node",
+  "setupFilesAfterEnv": ["<rootDir>/../test/jest-global-mocks.ts"]
 }
+
 }

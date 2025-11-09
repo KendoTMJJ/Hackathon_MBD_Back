@@ -26,8 +26,8 @@ export class Technology {
     description: 'Local image path',
     example: '/assets/images/nginx.png',
   })
-  @Column({ name: 'image_url', type: 'varchar', length: 500 })
-  imageUrl: string;
+  @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
+  imageUrl?: string;
 
   @ApiProperty({
     description: 'Technology description',
@@ -37,16 +37,16 @@ export class Technology {
   description: string;
 
   @ApiProperty({
-    description: 'List of supported vendors',
+    description: 'List of supported providers',
     example: ['Cisco', 'Fortinet', 'Palo Alto'],
     isArray: true,
   })
   @Column('text', {
-    name: 'vendors',
+    name: 'provider',
     array: true,
     default: () => 'ARRAY[]::text[]',
   })
-  vendors: string[];
+  provider: string[];
 
   @ApiProperty({
     description: 'Allowed network zones',

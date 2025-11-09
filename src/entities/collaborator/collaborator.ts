@@ -1,5 +1,4 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Document } from 'src/entities/document/document';
 import {
   Column,
   CreateDateColumn,
@@ -11,6 +10,7 @@ import {
   Unique,
   Index,
 } from 'typeorm';
+import { Document } from '../document/document';
 
 export type CollaboratorRole = 'owner' | 'editor' | 'reader';
 

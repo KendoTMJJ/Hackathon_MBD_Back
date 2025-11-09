@@ -1,5 +1,5 @@
-jest.mock('src/entities/tecnologie/tecnologie', () => ({
-  Tecnologie: class {},
+jest.mock('src/entities/tecnologie/tecnology', () => ({
+  Technology: class {},
 }));
 
 jest.mock('src/entities/template/template', () => ({

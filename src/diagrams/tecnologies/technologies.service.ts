@@ -65,10 +65,10 @@ export class TechnologiesService {
     if (q?.trim()) {
       const like = `%${q.toLowerCase()}%`;
       queryBuilder.andWhere(
-        `(LOWER(t.name) LIKE :q OR LOWER(t.description) LIKE :q OR LOWER(t.provider) LIKE :q
-          OR EXISTS (
-            SELECT 1 FROM unnest(t.tags) tag WHERE LOWER(tag) LIKE :q
-          ))`,
+        `(LOWER(t.name) LIKE :q OR 
+        LOWER(t.description) LIKE :q OR 
+        EXISTS (SELECT 1 FROM unnest(t.provider) p WHERE LOWER(p) LIKE :q) OR
+        EXISTS (SELECT 1 FROM unnest(t.tags) tag WHERE LOWER(tag) LIKE :q))`,
         { q: like },
       );
     }

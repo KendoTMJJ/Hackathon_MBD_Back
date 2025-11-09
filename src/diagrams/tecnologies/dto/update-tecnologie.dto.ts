@@ -25,7 +25,7 @@ export class UpdateTecnologieDto {
 
   @IsOptional()
   @IsString()
-  provider?: string[];
+  providers?: string[];
 
   @IsArray()
   @ArrayUnique()
@@ -35,7 +35,7 @@ export class UpdateTecnologieDto {
   @IsOptional()
   @IsArray()
   @ArrayUnique()
-  @Matches(/^(cloud|dmz|lan|datacenter|ot)\/[a-z0-9\-]+$/i, { each: true })
+  @Matches(/^[a-z0-9\-]+$/i, { each: true })
   allowedSubzones?: string[];
 
   @IsOptional()
