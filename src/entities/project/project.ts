@@ -9,26 +9,35 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('Project', { schema: 'public' })
+@Entity('project', { schema: 'public' })
 export class Project {
-  @ApiProperty({ description: 'ID del proyecto', example: 'uuid' })
-  @PrimaryGeneratedColumn('uuid', { name: 'cod_project' })
+  @ApiProperty({ description: 'Project unique identifier', example: 'uuid' })
+  @PrimaryGeneratedColumn('uuid', { name: 'project_id' })
   id: string;
 
-  @ApiProperty({ description: 'Nombre', example: 'Equipo Ventas' })
-  @Column({ name: 'name_project', type: 'varchar' })
+  @ApiProperty({ description: 'Project name', example: 'Sales Team' })
+  @Column({ name: 'name', type: 'varchar' })
   name: string;
 
-  @ApiProperty({ description: 'Owner (Auth0 sub)', example: 'auth0|123' })
+  @ApiProperty({
+    description: 'Project owner (Auth0 sub)',
+    example: 'auth0|123',
+  })
   @Column({ name: 'owner_sub', type: 'varchar' })
   ownerSub: string;
 
+  @ApiProperty({ description: 'Creation timestamp' })
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
+  @ApiProperty({ description: 'Last update timestamp' })
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
+  @ApiProperty({
+    description: 'Documents associated with this project',
+    type: () => [Document],
+  })
   @OneToMany(() => Document, (d: Document) => d.project)
   documents: Document[];
 }

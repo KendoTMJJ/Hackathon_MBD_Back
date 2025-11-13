@@ -3,10 +3,10 @@ import { share } from 'rxjs';
 import { Collaborator } from 'src/entities/collaborator/collaborator';
 import { Document } from 'src/entities/document/document';
 import { Project } from 'src/entities/project/project';
-import { SharedLink } from 'src/entities/shared-link/shared-link';
+import { ShareLink } from 'src/entities/shared-link/shared-link';
 import { Sheet } from 'src/entities/sheet/sheet';
 import { Snapshot } from 'src/entities/snapshot/snapshot';
-import { Tecnologie } from 'src/entities/tecnologie/tecnologie';
+import { Technology } from 'src/entities/tecnologie/tecnology';
 import { Template } from 'src/entities/template/template';
 import { DataSource } from 'typeorm';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
@@ -37,10 +37,11 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
               Collaborator,
               Snapshot,
               Template,
-              SharedLink,
+              ShareLink,
               Sheet,
-              Tecnologie,
+              Technology,
             ],
+            ssl: false,
           });
 
           await poolConection.initialize();

@@ -1,126 +1,155 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { Collaborator } from 'src/entities/collaborator/collaborator';
+import { Document } from 'src/entities/document/document';
+import { ShareLink } from 'src/entities/shared-link/shared-link';
 import { DataSource, Repository } from 'typeorm';
-import { SharedLink } from '../../entities/shared-link/shared-link';
-import { Document } from '../../entities/document/document';
-import * as crypto from 'crypto';
-import * as bcrypt from 'bcrypt';
 import { CreateShareLinkDto } from './dto/create-shared-link.dto';
+import { randomBytes } from 'crypto';
 
 @Injectable()
-export class SharedLinksService {
-  private sharedLinks: Repository<SharedLink>;
-  private documents: Repository<Document>;
+export class ShareLinksService {
+  constructor(
+    @InjectRepository(ShareLink) private readonly repo: Repository<ShareLink>,
+    @InjectRepository(Document) private readonly docRepo: Repository<Document>,
+    @InjectRepository(Collaborator)
+    private readonly collabRepo: Repository<Collaborator>,
+    @InjectDataSource() private readonly ds: DataSource,
+  ) {}
 
-  constructor(private readonly ds: DataSource) {
-    this.sharedLinks = ds.getRepository(SharedLink);
-    this.documents = ds.getRepository(Document);
+  private shareUrl(slug: string) {
+    const base = process.env.FRONTEND_URL || 'http://localhost:5173';
+    return `${base}/shared/${slug}`;
   }
 
-  async create(
-    documentId: string,
-    dto: CreateShareLinkDto,
-    userSub: string,
-  ): Promise<{ shareUrl: string; link: SharedLink }> {
-    await this.canShare(documentId, userSub);
+  /** Permisos: creador del doc, owner del proyecto, o collaborator owner/editor */
+  private async ensureCanShare(documentId: string, userSub: string) {
+    const doc = await this.docRepo
+      .createQueryBuilder('d')
+      .leftJoin('d.project', 'p')
+      .leftJoin('d.collaborators', 'c')
+      .where('d.id = :documentId', { documentId })
+      .andWhere(
+        '(d.createdBy = :userSub OR p.ownerSub = :userSub OR (c.userSub = :userSub AND c.role IN (:...roles)))',
+        { userSub, roles: ['owner', 'editor'] },
+      )
+      .getOne();
 
-    const token = crypto.randomBytes(32).toString('hex');
+    if (!doc)
+      throw new ForbiddenException('No permission to share this document');
+  }
 
-    let passwordHash: string | null = null;
-    if (dto.password) {
-      passwordHash = await bcrypt.hash(dto.password, 10);
+  async create(dto: CreateShareLinkDto, createdBySub: string) {
+    const scope: 'document' | 'project' = dto.scope ?? 'document'; // 👈 default aquí
+
+    if (scope === 'project' && !dto.projectId)
+      throw new BadRequestException('projectId requerido');
+    if (scope === 'document' && !dto.documentId)
+      throw new BadRequestException('documentId requerido');
+
+    if (scope === 'document' && dto.documentId) {
+      await this.ensureCanShare(dto.documentId, createdBySub);
     }
 
-    const link = await this.sharedLinks.save(
-      this.sharedLinks.create({
-        token,
-        permission: dto.permission,
-        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
-        passwordHash,
-        documentId,
-        createdBy: userSub,
-      }),
-    );
+    const slug = randomBytes(16).toString('base64url').slice(0, 20);
 
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const shareUrl = `${baseUrl}/shared/${token}`;
+    // Si el front manda "permission", mapéalo a minRole:
+    const minRole: 'reader' | 'editor' =
+      dto.minRole ?? (dto.permission === 'edit' ? 'editor' : 'reader');
 
-    return { shareUrl, link };
+    const entity = this.repo.create({
+      slug,
+      scope, // 👈 usa la variable con fallback
+      projectId: scope === 'project' ? (dto.projectId ?? null) : null,
+      documentId: scope === 'document' ? (dto.documentId ?? null) : null,
+      minRole, // 👈 respeta el permiso del modal
+      expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+      maxUses: dto.maxUses ?? null,
+      createdBySub,
+      // isActive toma el default de la entidad
+    });
+
+    const saved = await this.repo.save(entity);
+    return { shareUrl: this.shareUrl(saved.slug), link: saved };
   }
 
-  async listByDocument(documentId: string, userSub: string): Promise<SharedLink[]> {
-    await this.canShare(documentId, userSub);
-
-    return this.sharedLinks.find({
+  /** Usado por el modal para listar links de un documento */
+  async listByDocument(documentId: string, userSub: string) {
+    await this.ensureCanShare(documentId, userSub);
+    return this.repo.find({
       where: { documentId, isActive: true },
       order: { createdAt: 'DESC' },
     });
   }
 
-  async getByToken(
-    token: string,
-    password?: string,
-  ): Promise<{ document: Document; permission: 'read' | 'edit' }> {
-    const link = await this.sharedLinks.findOne({
-      where: { token, isActive: true },
-      relations: ['document', 'document.project', 'document.sheets'],
-    });
+  /** Desactiva (revoca) un link */
+  async revoke(id: string, userSub: string) {
+    const link = await this.repo.findOne({ where: { id } });
+    if (!link) throw new NotFoundException('Link no existe');
 
-    if (!link) throw new NotFoundException('Shared link not found');
-    
-
-    if (link.expiresAt && new Date() > link.expiresAt) {
-      throw new ForbiddenException('Shared link has expired');
+    if (link.documentId) {
+      await this.ensureCanShare(link.documentId, userSub);
     }
+    // si soportas scope project, valida que userSub sea owner del proyecto
 
-    if (link.passwordHash) {
-      if (!password) {
-        throw new BadRequestException('Password required');
+    await this.repo.update({ id }, { isActive: false });
+    return { ok: true };
+  }
+
+  async preview(slug: string) {
+    const link = await this.repo.findOne({ where: { slug, isActive: true } });
+    if (!link) throw new NotFoundException('Link no existe');
+    if (link.isExpired) throw new ForbiddenException('Link expirado');
+    if (link.maxUses && link.uses >= link.maxUses)
+      throw new ForbiddenException('Link sin cupos');
+    return link;
+  }
+
+  async accept(slug: string, userSub: string) {
+    return this.ds.transaction(async (manager) => {
+      const link = await manager.findOne(ShareLink, {
+        where: { slug, isActive: true },
+      });
+      if (!link) throw new NotFoundException('Link no existe');
+      if (link.expiresAt && new Date() > link.expiresAt)
+        throw new ForbiddenException('Link expirado');
+      if (link.maxUses && link.uses >= link.maxUses)
+        throw new ForbiddenException('Link sin cupos');
+
+      if (link.scope === 'document' && link.documentId) {
+        await manager.upsert(
+          Collaborator,
+          { documentId: link.documentId, userSub, role: link.minRole }, // 'reader' | 'editor'
+          { conflictPaths: ['documentId', 'userSub'] },
+        );
+      } else if (link.scope === 'project' && link.projectId) {
+        const docs = await manager.find(Document, {
+          where: { project: { id: link.projectId } },
+          relations: ['project'],
+        });
+        for (const d of docs) {
+          await manager.upsert(
+            Collaborator,
+            { documentId: d.id, userSub, role: link.minRole },
+            { conflictPaths: ['documentId', 'userSub'] },
+          );
+        }
       }
-      const isValidPassword = await bcrypt.compare(password, link.passwordHash);
-      if (!isValidPassword) {
-        throw new ForbiddenException('Invalid password');
-      }
-    }
 
-    return { document: link.document, permission: link.permission };
-  }
-
-  async revoke(linkId: string, userSub: string): Promise<void> {
-    const link = await this.sharedLinks.findOne({
-      where: { id: linkId },
-      relations: ['document'],
+      await manager.increment(ShareLink, { id: link.id }, 'uses', 1);
+      return { ok: true };
     });
-
-    if (!link) throw new NotFoundException('Shared link not found');
-
-    await this.canShare(link.documentId, userSub);
-
-    await this.sharedLinks.update(linkId, { isActive: false });
   }
 
-  private async canShare(documentId: string, userSub: string): Promise<void> {
-    const document = await this.documents
-      .createQueryBuilder('d')
-      .leftJoin('d.collaborators', 'c')
-      .leftJoin('d.project', 'p')
-      .where('d.id = :documentId', { documentId })
-      .andWhere(
-        '(d.created_by = :userSub OR p.owner_sub = :userSub OR (c.user_sub = :userSub AND c.role IN (:...roles)))',
-        { userSub, roles: ['owner', 'editor'] },
-      )
-      .getOne();
-
-    if (!document) {
-      throw new ForbiddenException('No permission to share this document');
-    }
+  async getByToken(slug: string) {
+    return this.repo.findOne({
+      where: { slug, isActive: true },
+      relations: ['document', 'project'],
+    });
   }
-
-async findById(id: string) {
-  return await this.sharedLinks.findOne({ where: { id } });
-}
 }

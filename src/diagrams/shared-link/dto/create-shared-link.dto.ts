@@ -1,20 +1,15 @@
-import { IsEnum, IsOptional, IsString, IsDateString } from 'class-validator';
-
-export enum SharePermission {
-  READ = 'read',
-  EDIT = 'edit',
-}
-
 export class CreateShareLinkDto {
-  @IsEnum(SharePermission)
-  permission: SharePermission;
+  scope?: 'document' | 'project';
+  projectId?: string | null;
+  documentId?: string | null;
 
-  @IsOptional()
-  @IsDateString()
-  expiresAt?: string; // ISO string, opcional
+  // Front legacy
+  permission?: 'read' | 'edit';
 
-  @IsOptional()
-  @IsString()
-  password?: string; // opcional, para links protegidos
-  
+  // Back nativo
+  minRole?: 'reader' | 'editor';
+
+  expiresAt?: string | null;
+  maxUses?: number | null;
+  password?: string | null;
 }

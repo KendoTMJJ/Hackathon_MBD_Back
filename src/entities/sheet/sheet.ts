@@ -9,45 +9,51 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 
-@Entity('Sheet', { schema: 'public' })
+@Entity('sheet', { schema: 'public' })
 export class Sheet {
-  @ApiProperty({ description: 'ID de la hoja', example: 'uuid' })
-  @PrimaryGeneratedColumn('uuid', { name: 'cod_sheet' })
+  @ApiProperty({ description: 'Sheet unique identifier', example: 'uuid' })
+  @PrimaryGeneratedColumn('uuid', { name: 'sheet_id' })
   id: string;
 
-  @ApiProperty({ description: 'Nombre de la hoja', example: 'Hoja 1' })
+  @ApiProperty({ description: 'Sheet name', example: 'Sheet 1' })
   @Column({ name: 'name', type: 'varchar' })
   name: string;
 
-  @ApiProperty({ description: 'Orden de la hoja', example: 0 })
+  @ApiProperty({ description: 'Display order index', example: 0 })
   @Column({ name: 'order_index', type: 'int', default: 0 })
   orderIndex: number;
 
   @ApiProperty({
-    description: 'Datos de la hoja (React Flow)',
+    description: 'Sheet React Flow data',
     example: { nodes: [], edges: [] },
   })
   @Column({ name: 'data', type: 'jsonb', default: () => `'{}'` })
   data: Record<string, any>;
 
-  @ApiProperty({ description: 'Activa', example: true })
+  @VersionColumn({ name: 'version', default: 0 })
+  version: number;
+
+  @ApiProperty({ description: 'Whether the sheet is active', example: true })
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @ApiProperty({ description: 'Creation timestamp' })
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
+  @ApiProperty({ description: 'Last update timestamp' })
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @ApiProperty({ description: 'Documento', type: () => Document })
+  @ApiProperty({ description: 'Associated document ID' })
   @Index()
   @Column({ name: 'document_id', type: 'uuid' })
   documentId: string;
 
-  @ManyToOne(() => Document, (d: Document) => d.sheets, {
+  @ManyToOne(() => Document, (doc: Document) => doc.sheets, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'document_id' })

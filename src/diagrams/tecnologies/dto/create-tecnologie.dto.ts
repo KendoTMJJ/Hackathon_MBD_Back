@@ -1,31 +1,43 @@
-
-import { IsString, IsOptional, IsArray, IsEnum, ArrayUnique, IsIn, Matches } from 'class-validator';
-import { ZONE_KINDS, ZoneKind } from 'src/entities/tecnologie/tecnologie';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ArrayUnique,
+  IsIn,
+  Matches,
+} from 'class-validator';
+import { ZONE_TYPES, ZoneType } from 'src/entities/tecnologie/tecnology';
 
 export class CreateTecnologieDto {
   @IsString()
   name: string;
 
+  @IsOptional() // porque la entidad permite null
   @IsString()
-  imageUrl: string;                
+  imageUrl?: string;
 
-  @IsOptional()
-  @IsString()
-  description?: string;
+  @IsString() // ahora es obligatorio, igual que la entidad
+  description: string;
 
-  @IsString()
-  provider: string;
-
-  @IsArray() @ArrayUnique() @IsIn(ZONE_KINDS, { each: true })
-  allowedZones: ZoneKind[];     
-
-  @IsOptional() @IsArray()
-  @ArrayUnique()
-  @Matches(/^(cloud|dmz|lan|datacenter|ot)\/[a-z0-9\-]+$/i, { each: true })
-  allowedSubzones?: string[];   // ej: ["dmz/web","lan/usuarios"]
-
-  @IsOptional() @IsArray()
+  @IsArray()
   @ArrayUnique()
   @IsString({ each: true })
-  tags?: string[];  
+  provider: string[];
+
+  @IsArray()
+  @ArrayUnique()
+  @IsIn(ZONE_TYPES, { each: true })
+  allowedZones: ZoneType[];
+
+  @IsOptional() // la entidad tiene default []
+  @IsArray()
+  @ArrayUnique()
+  @Matches(/^[a-z0-9\-]+$/i, { each: true })
+  allowedSubzones?: string[];
+
+  @IsOptional() // la entidad tiene default []
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  tags?: string[];
 }

@@ -1,4 +1,3 @@
-// src/diagrams/documents/documents.service.ts
 import {
   BadRequestException,
   ConflictException,
@@ -7,36 +6,64 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
-import { Document } from '../../entities/document/document';
-import { Project } from '../../entities/project/project';
-import { Collaborator } from '../../entities/collaborator/collaborator';
-import { Snapshot } from '../../entities/snapshot/snapshot';
+
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
+import { Document } from 'src/entities/document/document';
+import { Project } from 'src/entities/project/project';
+import { Collaborator } from 'src/entities/collaborator/collaborator';
+import { Snapshot } from 'src/entities/snapshot/snapshot';
 
+/**
+ * Service responsible for document management operations
+ *
+ * @remarks
+ * Handles CRUD operations, cloning, version control, and permission management for documents.
+ * Implements comprehensive access control with role-based permissions (owner, editor, reader).
+ * Supports optimistic locking for concurrent updates and automatic snapshot creation.
+ */
 @Injectable()
 export class DocumentsService {
-  private docs: Repository<Document>;
-  private projects: Repository<Project>;
-  private cols: Repository<Collaborator>;
-  private snaps: Repository<Snapshot>;
+  private readonly documentRepository: Repository<Document>;
+  private readonly projectRepository: Repository<Project>;
+  private readonly collaboratorRepository: Repository<Collaborator>;
+  private readonly snapshotRepository: Repository<Snapshot>;
 
-  constructor(private readonly ds: DataSource) {
-    this.docs = ds.getRepository(Document);
-    this.projects = ds.getRepository(Project);
-    this.cols = ds.getRepository(Collaborator);
-    this.snaps = ds.getRepository(Snapshot);
+  /**
+   * Initializes the DocumentsService with data source dependency
+   *
+   * @param dataSource - TypeORM DataSource for database operations and transactions
+   */
+  constructor(private readonly dataSource: DataSource) {
+    this.documentRepository = dataSource.getRepository(Document);
+    this.projectRepository = dataSource.getRepository(Project);
+    this.collaboratorRepository = dataSource.getRepository(Collaborator);
+    this.snapshotRepository = dataSource.getRepository(Snapshot);
   }
 
-  // ---------- CRUD ----------
+  // ---------- CRUD Operations ----------
+
+  /**
+   * Creates a new document in the specified project
+   *
+   * @param dto - Data transfer object containing document creation parameters
+   * @param userSub - The subject identifier of the user creating the document
+   * @returns The newly created document
+   * @throws {NotFoundException} When the specified project is not found
+   * @throws {ForbiddenException} When user is not the owner of the project
+   *
+   * @remarks
+   * Automatically assigns the creator as the document owner collaborator.
+   * Executes within a transaction to ensure data consistency.
+   */
   async create(dto: CreateDocumentDto, userSub: string): Promise<Document> {
-    const project = await this.projects.findOne({
+    const project = await this.projectRepository.findOne({
       where: { id: dto.projectId },
     });
     if (!project) throw new NotFoundException('Project not found');
     if (project.ownerSub !== userSub) throw new ForbiddenException();
 
-    return this.ds.transaction(async (m) => {
+    return this.dataSource.transaction(async (m) => {
       const dRepo = m.getRepository(Document);
       const cRepo = m.getRepository(Collaborator);
 
@@ -59,32 +86,64 @@ export class DocumentsService {
     });
   }
 
+  /**
+   * Retrieves a document by ID with read permission validation
+   *
+   * @param id - The unique identifier of the document
+   * @param userSub - The subject identifier of the user requesting access
+   * @returns The requested document
+   * @throws {NotFoundException} When document with the given ID is not found
+   * @throws {ForbiddenException} When user lacks read permission for the document
+   */
   async get(id: string, userSub: string): Promise<Document> {
     await this.canRead(id, userSub);
-    const doc = await this.docs.findOne({ where: { id } });
+    const doc = await this.documentRepository.findOne({ where: { id } });
     if (!doc) throw new NotFoundException('Document not found');
     return doc;
   }
 
+  /**
+   * Lists all documents in a project accessible to the user
+   *
+   * @param projectId - The unique identifier of the project
+   * @param userSub - The subject identifier of the user requesting access
+   * @returns Array of documents ordered by update date (descending)
+   *
+   * @remarks
+   * Returns documents where the user is either the project owner or a collaborator on the document
+   */
   listByProject(projectId: string, userSub: string): Promise<Document[]> {
-    // Permite si es owner del proyecto o colaborador del documento
-    return this.docs
+    return this.documentRepository
       .createQueryBuilder('d')
-      .leftJoin(Project, 'p', 'p.cod_project = d.project_id')
+      .leftJoin(Project, 'p', 'p.project_id = d.project_id')
       .leftJoin(
         Collaborator,
         'c',
-        'c.document_id = d.cod_document AND c.user_sub = :userSub',
+        'c.document_id = d.document_id AND c.user_sub = :userSub',
         { userSub },
       )
       .where('d.project_id = :projectId', { projectId })
-      .andWhere('(p.owner_sub = :userSub OR c.cod_collaborator IS NOT NULL)', {
+      .andWhere('(p.owner_sub = :userSub OR c.collaborator_id IS NOT NULL)', {
         userSub,
       })
       .orderBy('d.updated_at', 'DESC')
       .getMany();
   }
 
+  /**
+   * Updates a document with optimistic locking and version control
+   *
+   * @param id - The unique identifier of the document to update
+   * @param dto - Data transfer object containing update parameters
+   * @param userSub - The subject identifier of the user performing the update
+   * @returns The updated document
+   * @throws {ForbiddenException} When user lacks edit permission for the document
+   * @throws {ConflictException} When version mismatch occurs (optimistic locking)
+   *
+   * @remarks
+   * Uses optimistic locking to prevent concurrent update conflicts.
+   * Automatically creates snapshots for version history (best-effort, non-blocking).
+   */
   async update(
     id: string,
     dto: UpdateDocumentDto,
@@ -92,8 +151,7 @@ export class DocumentsService {
   ): Promise<Document> {
     await this.canEdit(id, userSub);
 
-    // UPDATE atómico con lock optimista y RETURNING *
-    const res = await this.docs
+    const res = await this.documentRepository
       .createQueryBuilder()
       .update(Document)
       .set({
@@ -102,7 +160,7 @@ export class DocumentsService {
         version: () => `"version" + 1`,
         updatedAt: () => 'NOW()',
       })
-      .where('cod_document = :id AND "version" = :version', {
+      .where('document_id = :id AND "version" = :version', {
         id,
         version: dto.version,
       })
@@ -113,20 +171,35 @@ export class DocumentsService {
     if (!updated) throw new ConflictException('Version mismatch');
 
     // Snapshot best-effort (no bloquea la respuesta)
-    this.snaps
+    this.snapshotRepository
       .insert({ documentId: id, version: updated.version, data: dto.data })
       .catch(() => void 0);
 
     return updated;
   }
 
+  /**
+   * Clones a template document to create a new diagram
+   *
+   * @param templateId - The unique identifier of the template document to clone
+   * @param projectId - The unique identifier of the target project
+   * @param title - The title for the new document
+   * @param userSub - The subject identifier of the user performing the clone
+   * @returns The newly created document clone
+   * @throws {BadRequestException} When source document is not a template
+   * @throws {NotFoundException} When template document is not found
+   * @throws {ForbiddenException} When user lacks read permission for the template
+   *
+   * @remarks
+   * Creates a deep copy of the template data to avoid reference sharing.
+   */
   async cloneFromTemplate(
     templateId: string,
     projectId: string,
     title: string,
     userSub: string,
   ): Promise<Document> {
-    const tpl = await this.get(templateId, userSub); // get() ya garantiza no-null
+    const tpl = await this.get(templateId, userSub);
     if (tpl.kind !== 'template') {
       throw new BadRequestException('Source document is not a template');
     }
@@ -140,19 +213,38 @@ export class DocumentsService {
     );
   }
 
+  /**
+   * Lists all collaborators for a document
+   *
+   * @param id - The unique identifier of the document
+   * @param userSub - The subject identifier of the user requesting the list
+   * @returns Array of collaborators for the document
+   * @throws {ForbiddenException} When user lacks read permission for the document
+   */
   async listCollaborators(
     id: string,
     userSub: string,
   ): Promise<Collaborator[]> {
     await this.canRead(id, userSub);
-    return this.cols.find({ where: { documentId: id } });
+    return this.collaboratorRepository.find({ where: { documentId: id } });
   }
 
+  /**
+   * Permanently deletes a document and its related data
+   *
+   * @param id - The unique identifier of the document to delete
+   * @param userSub - The subject identifier of the user performing the deletion
+   * @throws {NotFoundException} When document with the given ID is not found
+   * @throws {ForbiddenException} When user lacks delete permission for the document
+   *
+   * @remarks
+   * Executes within a transaction to ensure all related data (snapshots, collaborators)
+   * are deleted atomically with the document.
+   */
   async remove(id: string, userSub: string): Promise<void> {
     await this.canDelete(id, userSub);
 
-    // Si no hay cascadas en FK, borramos explícitamente
-    await this.ds.transaction(async (m) => {
+    await this.dataSource.transaction(async (m) => {
       const dRepo = m.getRepository(Document);
       const cRepo = m.getRepository(Collaborator);
       const sRepo = m.getRepository(Snapshot);
@@ -167,64 +259,92 @@ export class DocumentsService {
     });
   }
 
-  // --- permisos ---
+  // ---------- Permission Methods ----------
 
-  private async canDelete(id: string, userSub: string): Promise<void> {
-    // Requiere ser owner del proyecto o owner del documento
-    const ok = await this.docs
-      .createQueryBuilder('d')
-      .leftJoin(Project, 'p', 'p.cod_project = d.project_id')
-      .leftJoin(
-        Collaborator,
-        'c',
-        'c.document_id = d.cod_document AND c.user_sub = :userSub',
-        { userSub },
-      )
-      .where('d.cod_document = :id', { id })
-      .andWhere(
-        "(p.owner_sub = :userSub OR (c.cod_collaborator IS NOT NULL AND c.role_collab = 'owner'))",
-        { userSub },
-      )
-      .getOne();
-
-    if (!ok) throw new ForbiddenException();
-  }
-
-  // ---------- permisos ----------
+  /**
+   * Validates if user has read permission for the document
+   *
+   * @param id - The unique identifier of the document
+   * @param userSub - The subject identifier of the user to validate
+   * @throws {ForbiddenException} When user lacks read permission
+   *
+   * @remarks
+   * User must be either the project owner or a collaborator on the document
+   */
   private async canRead(id: string, userSub: string): Promise<void> {
-    const ok = await this.docs
+    const ok = await this.documentRepository
       .createQueryBuilder('d')
-      .leftJoin(Project, 'p', 'p.cod_project = d.project_id')
+      .leftJoin(Project, 'p', 'p.project_id = d.project_id')
       .leftJoin(
         Collaborator,
         'c',
-        'c.document_id = d.cod_document AND c.user_sub = :userSub',
+        'c.document_id = d.document_id AND c.user_sub = :userSub',
         { userSub },
       )
-      .where('d.cod_document = :id', { id })
-      .andWhere('(p.owner_sub = :userSub OR c.cod_collaborator IS NOT NULL)', {
+      .where('d.document_id = :id', { id })
+      .andWhere('(p.owner_sub = :userSub OR c.collaborator_id IS NOT NULL)', {
         userSub,
       })
       .getOne();
     if (!ok) throw new ForbiddenException();
   }
 
+  /**
+   * Validates if user has edit permission for the document
+   *
+   * @param id - The unique identifier of the document
+   * @param userSub - The subject identifier of the user to validate
+   * @throws {ForbiddenException} When user lacks edit permission
+   *
+   * @remarks
+   * User must be either the project owner or a collaborator with 'owner' or 'editor' role
+   */
   private async canEdit(id: string, userSub: string): Promise<void> {
-    const ok = await this.docs
+    const ok = await this.documentRepository
       .createQueryBuilder('d')
-      .leftJoin(Project, 'p', 'p.cod_project = d.project_id')
+      .leftJoin(Project, 'p', 'p.project_id = d.project_id')
       .leftJoin(
         Collaborator,
         'c',
-        'c.document_id = d.cod_document AND c.user_sub = :userSub',
+        'c.document_id = d.document_id AND c.user_sub = :userSub',
         { userSub },
       )
-      .where('d.cod_document = :id', { id })
+      .where('d.document_id = :id', { id })
       .andWhere(
-        "(p.owner_sub = :userSub OR (c.cod_collaborator IS NOT NULL AND c.role_collab IN ('owner','editor')))",
+        "(p.owner_sub = :userSub OR (c.collaborator_id IS NOT NULL AND c.role IN ('owner','editor')))",
         { userSub },
       )
       .getOne();
+    if (!ok) throw new ForbiddenException();
+  }
+
+  /**
+   * Validates if user has delete permission for the document
+   *
+   * @param id - The unique identifier of the document
+   * @param userSub - The subject identifier of the user to validate
+   * @throws {ForbiddenException} When user lacks delete permission
+   *
+   * @remarks
+   * User must be either the project owner or a collaborator with 'owner' role
+   */
+  private async canDelete(id: string, userSub: string): Promise<void> {
+    const ok = await this.documentRepository
+      .createQueryBuilder('d')
+      .leftJoin(Project, 'p', 'p.project_id = d.project_id')
+      .leftJoin(
+        Collaborator,
+        'c',
+        'c.document_id = d.document_id AND c.user_sub = :userSub',
+        { userSub },
+      )
+      .where('d.document_id = :id', { id })
+      .andWhere(
+        "(p.owner_sub = :userSub OR (c.collaborator_id IS NOT NULL AND c.role = 'owner'))",
+        { userSub },
+      )
+      .getOne();
+
     if (!ok) throw new ForbiddenException();
   }
 }

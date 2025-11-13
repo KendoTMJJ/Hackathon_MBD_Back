@@ -4,7 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { DiagramsModule } from './diagrams/diagrams.module';
 import { AuthModule } from './auth/auth.module';
 import { ConexionModule } from './config/conexion/conexion.module';
-import { TecnologiesModule } from './diagrams/tecnologies/tecnologies.module';
+import { ConexionTestModule } from './app-test/conexion-test.module';
+import { AppTestModule } from './app-test/app-test.module';
 
 @Module({
   imports: [
@@ -12,7 +13,8 @@ import { TecnologiesModule } from './diagrams/tecnologies/tecnologies.module';
     DiagramsModule,
     AuthModule,
     ConexionModule,
-    TecnologiesModule
+    ConexionTestModule,
+    AppTestModule,
   ],
   controllers: [],
   providers: [],

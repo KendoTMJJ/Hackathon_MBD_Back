@@ -1,49 +1,154 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Delete,
-  Param,
-  Body,
   Query,
+  Post,
+  Patch,
+  Param,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { SharedLinksService } from './shared-links.service';
+import { ShareLinksService } from './shared-links.service';
 import { CreateShareLinkDto } from './dto/create-shared-link.dto';
+import { AuthGuard } from '@nestjs/passport';
+import {
+  ApiOperation,
+  ApiTags,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 
-@ApiTags('shared-links')
-@Controller()
-export class SharedLinksController {
-  constructor(private readonly sharedLinksService: SharedLinksService) {}
+/**
+ * Controller for managing share link operations
+ *
+ * @remarks
+ * Provides endpoints for creating, listing, previewing, accepting, and revoking share links.
+ * Most operations require JWT authentication except for public preview.
+ */
+@ApiTags('share-links')
+@Controller('share-links')
+export class ShareLinksController {
+  constructor(private readonly shareLinksService: ShareLinksService) {}
 
-  @Post('documents/:id/share')
+  /**
+   * Creates a new share link
+   *
+   * @param createShareLinkDto - DTO containing share link configuration
+   * @param request - Express request object containing user information
+   * @returns Created share link with URL
+   */
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Crear un nuevo enlace compartido',
+    description: 'Crea un nuevo enlace compartido para un documento o proyecto',
+  })
+  @ApiResponse({ status: 201, description: 'Share link created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid input parameters' })
+  @ApiResponse({ status: 403, description: 'User lacks sharing permissions' })
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Crear link compartido' })
-  @ApiResponse({ status: 201, description: 'Link creado exitosamente' })
-  async createShare(
-    @Param('id') documentId: string,
-    @Body() dto: CreateShareLinkDto,
-    @Req() req: any,
-  ) {
-    return this.sharedLinksService.create(documentId, dto, req.user.sub);
+  @Post()
+  create(@Body() createShareLinkDto: CreateShareLinkDto, @Req() request: any) {
+    return this.shareLinksService.create(createShareLinkDto, request.user.sub);
   }
 
-  @Get('documents/:id/shares')
+  /**
+   * Lists all active share links for a specific document
+   *
+   * @param documentId - Document ID to filter share links
+   * @param request - Express request object containing user information
+   * @returns List of share links for the specified document
+   */
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Listar enlaces compartidos de un documento',
+    description:
+      'Obtiene todos los enlaces activos para un documento específico',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of share links retrieved successfully',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'User lacks permission to view share links',
+  })
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Listar links compartidos' })
-  @ApiResponse({ status: 200, description: 'Lista de links' })
-  async listShares(@Param('id') documentId: string, @Req() req: any) {
-    return this.sharedLinksService.listByDocument(documentId, req.user.sub);
+  @Get()
+  listByDocument(@Query('documentId') documentId: string, @Req() request: any) {
+    return this.shareLinksService.listByDocument(documentId, request.user.sub);
   }
 
-  @Delete('documents/shares/:id')
+  /**
+   * Previews a share link without consuming it
+   *
+   * @param slug - Unique slug identifier of the share link
+   * @returns Share link details if valid
+   */
+  @ApiOperation({
+    summary: 'Previsualizar enlace compartido',
+    description: 'Obtiene los detalles de un enlace compartido sin consumirlo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Share link details retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Share link not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Share link expired or has no remaining uses',
+  })
+  @Get(':slug')
+  preview(@Param('slug') slug: string) {
+    return this.shareLinksService.preview(slug);
+  }
+
+  /**
+   * Accepts a share link and grants appropriate permissions
+   *
+   * @param slug - Unique slug identifier of the share link
+   * @param request - Express request object containing user information
+   * @returns Confirmation of successful acceptance
+   */
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Aceptar enlace compartido',
+    description:
+      'Acepta un enlace compartido y otorga los permisos correspondientes al usuario',
+  })
+  @ApiResponse({ status: 200, description: 'Share link accepted successfully' })
+  @ApiResponse({ status: 404, description: 'Share link not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Share link expired or has no remaining uses',
+  })
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Revocar link compartido' })
-  @ApiResponse({ status: 200, description: 'Link revocado exitosamente' })
-  async revokeShare(@Param('id') linkId: string, @Req() req: any) {
-    return this.sharedLinksService.revoke(linkId, req.user.sub);
+  @Post(':slug/accept')
+  accept(@Param('slug') slug: string, @Req() request: any) {
+    return this.shareLinksService.accept(slug, request.user.sub);
+  }
+
+  /**
+   * Revokes (deactivates) a share link
+   *
+   * @param shareLinkId - ID of the share link to revoke
+   * @param request - Express request object containing user information
+   * @returns Confirmation of successful revocation
+   */
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Revocar enlace compartido',
+    description: 'Desactiva un enlace compartido existente',
+  })
+  @ApiResponse({ status: 200, description: 'Share link revoked successfully' })
+  @ApiResponse({ status: 404, description: 'Share link not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'User lacks permission to revoke share link',
+  })
+  @UseGuards(AuthGuard('jwt'))
+  @Patch(':id')
+  revoke(@Param('id') shareLinkId: string, @Req() request: any) {
+    return this.shareLinksService.revoke(shareLinkId, request.user.sub);
   }
 }
