@@ -1,5 +1,4 @@
 import { Global, Module } from '@nestjs/common';
-import { share } from 'rxjs';
 import { Collaborator } from 'src/entities/collaborator/collaborator';
 import { Document } from 'src/entities/document/document';
 import { Project } from 'src/entities/project/project';
@@ -18,19 +17,25 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
   providers: [
     {
       provide: DataSource,
-      inject: [],
+
+      // This factory initializes the TypeORM DataSource and makes it globally available
       useFactory: async () => {
         try {
-          const poolConection = new DataSource({
+          const poolConnection = new DataSource({
             type: 'postgres',
             host: String(process.env.DB_HOST),
             port: Number(process.env.DB_PORT),
             username: String(process.env.DB_USER),
             database: String(process.env.DB_NAME),
             password: String(process.env.DB_PASS),
+
+            // NOTE: Only use synchronize: true in development.
             synchronize: true,
             logging: true,
+
+            // Converts table/column naming to snake_case automatically
             namingStrategy: new SnakeNamingStrategy(),
+
             entities: [
               Project,
               Document,
@@ -41,14 +46,17 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
               Sheet,
               Technology,
             ],
+
+            // Set to true if your PostgreSQL requires SSL (e.g., cloud providers)
             ssl: false,
           });
 
-          await poolConection.initialize();
-          console.log('Conexion establecida con la bd: ' + 'bd_hackathon');
-          return poolConection;
+          await poolConnection.initialize();
+          console.log('Database connection established: bd_hackathon');
+
+          return poolConnection;
         } catch (error) {
-          console.log('Fallo al realizar la conexion de la bd');
+          console.error('Failed to establish database connection');
           throw error;
         }
       },

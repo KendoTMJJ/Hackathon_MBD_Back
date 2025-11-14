@@ -4,6 +4,8 @@ import { TechnologiesService } from './technologies.service';
 
 describe('TecnologiesController', () => {
   let controller: TechnologiesController;
+
+  // Mocked service with predefined return values for controller tests
   const mockService = {
     create: jest.fn().mockResolvedValue({ id: '1' }),
     findAll: jest.fn().mockResolvedValue([]),
@@ -22,18 +24,28 @@ describe('TecnologiesController', () => {
     controller = module.get<TechnologiesController>(TechnologiesController);
   });
 
-  it('create -> retorna lo creado', async () => {
+  /**
+   * Ensures that the controller correctly returns the created entity
+   * when delegating to the service's create() method.
+   */
+  it('create -> returns created entity', async () => {
     const dto = {} as any;
     expect(await controller.create(dto)).toEqual({ id: '1' });
   });
 
-  it('findAll -> retorna lista', async () => {
+  /**
+   * Ensures that findAll() returns the list provided by the service.
+   */
+  it('findAll -> returns list', async () => {
     expect(
       await controller.findAll(undefined, undefined, undefined, 100, 0),
     ).toEqual([]);
   });
 
-  it('findOne -> retorna entidad', async () => {
+  /**
+   * Ensures that getOne() returns the entity retrieved by the service.
+   */
+  it('findOne -> returns entity', async () => {
     expect(await controller.getOne('1')).toEqual({ id: '1' });
   });
 });
