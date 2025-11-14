@@ -14,7 +14,7 @@ import { Document } from '../document/document';
 
 export type CollaboratorRole = 'owner' | 'editor' | 'reader';
 
-@Entity({ name: 'collaborator', schema: 'public' }) // <-- minúsculas (opcional)
+@Entity({ name: 'collaborator', schema: 'public' })
 @Unique('uq_collaborator_doc_user', ['documentId', 'userSub'])
 @Index('idx_collaborator_document', ['documentId'])
 @Index('idx_collaborator_user', ['userSub'])
