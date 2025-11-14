@@ -1,4 +1,3 @@
-// src/auth/jwt.strategy.ts
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -7,10 +6,10 @@ import * as jwksRsa from 'jwks-rsa';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor() {
-    const domain = process.env.AUTH0_DOMAIN; // sin https ni slash
-    const audience = process.env.AUTH0_AUDIENCE; // debe coincidir con "aud" del token
+    const domain = process.env.AUTH0_DOMAIN; // without https or trailing slash
+    const audience = process.env.AUTH0_AUDIENCE; // must match the "aud" claim in the token
 
-    // Log de arranque (útil para verificar que leyó bien el .env)
+    // Startup log (useful to verify that environment variables are loaded correctly)
     console.log('[JWT] domain=', domain, 'audience=', audience);
 
     super({
@@ -27,9 +26,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
+  /**
+   * Validates the decoded JWT payload.
+   * Whatever is returned here will be assigned to `req.user`.
+   */
   async validate(payload: any) {
-    // Descomenta temporalmente para confirmar que entra aquí:
-    // console.log('[JWT] payload:', payload);
-    return payload; // req.user = payload
+    return payload;
   }
 }

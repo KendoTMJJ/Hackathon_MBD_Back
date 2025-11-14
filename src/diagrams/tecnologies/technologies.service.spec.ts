@@ -6,15 +6,22 @@ import { Technology } from 'src/entities/tecnologie/tecnology';
 import { mockRepository } from 'test/utils/mock-repo';
 import { createMockQueryBuilder } from 'test/utils/mock-query-builder';
 
+/**
+ * Unit tests for TechnologiesService.
+ * These tests validate the behavior of the service by mocking
+ * the repository and DataSource dependencies.
+ */
 describe('TechnologiesService', () => {
   let service: TechnologiesService;
   let mockRepo: ReturnType<typeof mockRepository>;
   let mockDataSource: any;
 
   beforeEach(async () => {
+    // Create and configure mock repository, including query builder
     mockRepo = mockRepository();
     mockRepo.createQueryBuilder.mockReturnValue(createMockQueryBuilder());
 
+    // Mock DataSource to return the mocked repository
     mockDataSource = {
       getRepository: jest.fn().mockReturnValue(mockRepo),
     };
@@ -29,7 +36,10 @@ describe('TechnologiesService', () => {
     service = module.get<TechnologiesService>(TechnologiesService);
   });
 
-  it('create -> guarda y devuelve entidad', async () => {
+  /**
+   * Ensures that create() stores and returns the new entity correctly.
+   */
+  it('create -> saves and returns entity', async () => {
     const dto = { name: 'NodeJS' };
     const entity = { id: '1', ...dto } as Technology;
 
@@ -43,7 +53,10 @@ describe('TechnologiesService', () => {
     expect(result).toEqual(entity);
   });
 
-  it('findOne -> lanza NotFoundException si no existe', async () => {
+  /**
+   * Ensures that findOne() throws NotFoundException when the entity does not exist.
+   */
+  it('findOne -> throws NotFoundException if not found', async () => {
     mockRepo.findOne.mockResolvedValue(undefined);
     await expect(service.findOne('nope')).rejects.toThrow(NotFoundException);
   });
