@@ -1,6 +1,6 @@
 # Plataforma de diagramas colaborativos (Hackathon)
 
-Autores: Manuel Santiago Martínez Sierra y Juan Esteban Tovar Arias
+Autores: Diego Esteban Buitrago Jimenez, Santiago Corredor Contreras, Manuel Santiago Martínez Sierra, Juan Esteban Tovar Arias y Jose Julian Tobito Montoya
 
 Este documento describe la estructura, configuración y uso del proyecto desarrollado para la hackatón. El sistema está compuesto por un backend en NestJS y un frontend en React + TypeScript + Vite para la creación de diagramas colaborativos orientados a seguridad.
 
